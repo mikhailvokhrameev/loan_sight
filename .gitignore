@@ -228,3 +228,5 @@ frontend/build/
 
 # Conda environment
 .conda/
+
+.DS_Store

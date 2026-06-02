@@ -39,6 +39,9 @@ INSTALLED_APPS = [ # List of Django applications
     'django.contrib.sessions', # Users sessions
     'django.contrib.messages', # Notifications system
     'django.contrib.staticfiles', # CSS, JS, Images
+    
+    # Local apps
+    'api',
 ]
 
 MIDDLEWARE = [ # Intermediate request handlers
@@ -118,3 +121,6 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Custom User Model
+AUTH_USER_MODEL = 'api.User'
