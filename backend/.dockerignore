@@ -1,0 +1,62 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.venv
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg
+.tox/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Testing
+tests/
+pytest.ini
+.coveragerc
+locustfile.py
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Old files
+app/
+
+# Migrations (optional, usually kept)
+# migrations/
+
+# Node modules (shouldn't exist but just in case)
+node_modules/
+npm-debug.log
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
