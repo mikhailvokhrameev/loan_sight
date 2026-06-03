@@ -1,0 +1,47 @@
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn.lock
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.DS_Store
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Build cache
+.cache/
+
+# OS files
+Thumbs.db
+.env
