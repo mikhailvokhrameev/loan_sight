@@ -39,9 +39,42 @@ body.dark-theme {
   --text-main: #f9fafb;
   --text-muted: #9ca3af;
   
-  --error-bg: #7f1d1d;
+  --error-bg: #982222;
   --success-bg: #064e3b;
   --warning-bg: #78350f;
+}
+
+body.dark-theme input[type="text"],
+body.dark-theme input[type="email"],
+body.dark-theme input[type="password"],
+body.dark-theme input[type="number"],
+body.dark-theme textarea,
+body.dark-theme select {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+
+body.dark-theme input[type="text"]:focus,
+body.dark-theme input[type="email"]:focus,
+body.dark-theme input[type="password"]:focus,
+body.dark-theme input[type="number"]:focus,
+body.dark-theme textarea:focus,
+body.dark-theme select:focus {
+  border-color: #f9fafb !important;
+  background-color: #1f2937 !important;
+}
+
+body.dark-theme input[type="text"]:disabled,
+body.dark-theme input[type="email"]:disabled,
+body.dark-theme input[type="password"]:disabled,
+body.dark-theme input[type="number"]:disabled,
+body.dark-theme textarea:disabled,
+body.dark-theme select:disabled {
+  background-color: #111827 !important;
+  color: #6b7280 !important;
+  border-color: #4b5563 !important;
+  opacity: 0.6;
 }
 
 /* Reset styles */
@@ -65,20 +98,8 @@ a {
   text-decoration: none;
 }
 
-/* Dark theme */
 body.dark-theme .btn-primary {
   color: #111827; 
-}
-
-body.dark-theme .form-input, 
-body.dark-theme .form-select {
-  background-color: #111827;
-  color: #f9fafb;
-}
-
-body.dark-theme .form-input:focus, 
-body.dark-theme .form-select:focus {
-  border-color: #f9fafb;
 }
 
 body.dark-theme .avatar-button {

@@ -15,6 +15,10 @@ export default function Dashboard() {
   
   // Modal Overlay Controls
   const [showModal, setShowModal] = useState(false);
+
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState(null);
   
   // Auth Session Lifecycle Global Hooks
   const { user } = useAuth();
@@ -92,16 +96,39 @@ export default function Dashboard() {
     }
   };
 
-  // Transactional Purge Handler
-  const handleDeleteApplication = async (id) => {
-    if (window.confirm('Are you sure you want to delete this application?')) {
-      try {
-        await applicationsAPI.delete(id);
-        // Instantly filter state array to omit deleted row without full reload
-        setApplications(applications.filter(app => app.id !== id));
-      } catch (err) {
-        setError('Failed to delete application');
-      }
+  // // Transactional Purge Handler
+  // const handleDeleteApplication = async (id) => {
+  //   if (window.confirm('Are you sure you want to delete this application?')) {
+  //     try {
+  //       await applicationsAPI.delete(id);
+  //       // Instantly filter state array to omit deleted row without full reload
+  //       setApplications(applications.filter(app => app.id !== id));
+  //     } catch (err) {
+  //       setError('Failed to delete application');
+  //     }
+  //   }
+  // };
+
+
+  // DELETE FLOW (MODAL VERSION)
+  // Open custom confirmation modal instead of window.confirm
+  const openDeleteModal = (id) => {
+    setDeleteTargetId(id);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm deletion after user clicks "Delete"
+  const confirmDeleteApplication = async () => {
+    try {
+      await applicationsAPI.delete(deleteTargetId);
+
+      // Remove deleted item from UI state instantly
+      setApplications(applications.filter(app => app.id !== deleteTargetId));
+
+      setShowDeleteModal(false);
+      setDeleteTargetId(null);
+    } catch (err) {
+      setError('Failed to delete application');
     }
   };
 
@@ -162,12 +189,12 @@ export default function Dashboard() {
                   onChange={handleFormChange}
                   disabled={loading}
                 >
-                  <option value="RUB">RUB (Рубли)</option>
-                  <option value="USD">USD (Доллары)</option>
-                  <option value="EUR">EUR (Евро)</option>
-                  <option value="GBP">GBP (Фунты)</option>
-                  <option value="KZT">KZT (Тенге)</option>
-                  <option value="BYN">BYN (Бел. рубли)</option>
+                  <option value="RUB">RUB</option>
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                  <option value="GBP">GBP</option>
+                  <option value="KZT">KZT</option>
+                  <option value="BYN">BYN</option>
                 </select>
               </div>
 
@@ -237,7 +264,7 @@ export default function Dashboard() {
                       </span>
                       <button
                         className="btn btn-secondary flex items-center gap-2" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--error)' }}
-                        onClick={() => handleDeleteApplication(app.id)}
+                        onClick={() => openDeleteModal(app.id)}
                         title="Delete"
                       >
                         <TrashIcon /> Delete
@@ -286,6 +313,46 @@ export default function Dashboard() {
             <button className="btn btn-primary w-full justify-center" onClick={() => setShowModal(false)}>
               Close
             </button>
+          </div>
+        </div>
+      )}
+       {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div className="card" style={{ maxWidth: '380px', width: '90%', textAlign: 'center' }}>
+            <h2 className="mb-2">Delete application?</h2>
+
+            <p className="text-sm text-muted mb-4">
+              This action cannot be undone.
+            </p>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                className="btn btn-secondary w-full"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeleteTargetId(null);
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                className="btn w-full"
+                style={{ backgroundColor: 'var(--error)', color: 'white' }}
+                onClick={confirmDeleteApplication}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
