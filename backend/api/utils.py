@@ -1,16 +1,13 @@
 import os
 import requests
-import pandas as pd
 import numpy as np
 import lightgbm as lgb
-from django.conf import settings # Get the root directory of a Django project
+from django.conf import settings
 from django.core.cache import cache
+from .models import ClientFeature, RAW_FEATURES
 
-# Lazy loading mechanism: the model and heavy data files are loaded into
-# the server's RAM only once (at the first request), rather than with each function call.
+# Lazy loading mechanism: the model is loaded into the server's RAM only once
 _model = None
-_features_df = None
-_default_features = None
 
 def get_currency_rate(target_currency, base_currency='RUB'):
     """
@@ -62,61 +59,48 @@ def get_model():
             raise FileNotFoundError(f"LightGBM model file not found at {model_path}")
     return _model
 
-def get_features_df():
+def get_client_features_dict(sk_id_curr):
     """
-    Loads only the test_features dataset (improvised client database).
+    Retrieves client features from the database.
+    Returns a dictionary of all features for the given sk_id_curr.
     """
-    global _features_df
-    if _features_df is None:
-        test_path = os.path.join(settings.BASE_DIR, 'ml_models', 'test_features.parquet')
+    try:
+        client = ClientFeature.objects.get(sk_id_curr=sk_id_curr)
         
-        if os.path.exists(test_path):
-            _features_df = pd.read_parquet(test_path)
-            # Ensure unique client IDs and set them as the DataFrame index for fast O(1) lookups
-            if 'SK_ID_CURR' in _features_df.columns:
-                _features_df.drop_duplicates(subset=['SK_ID_CURR'], inplace=True)
-                _features_df.set_index('SK_ID_CURR', inplace=True)
-        else:
-            _features_df = pd.DataFrame()
-            print(f"Warning: Client database not found at {test_path}")
+        # Convert all feature fields into a dictionary
+        feature_dict = {'SK_ID_CURR': sk_id_curr}
+        for feature in RAW_FEATURES:
+            sanitized_field = feature.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
+            value = getattr(client, sanitized_field, None)
+            # Store original feature name (uppercase) for model
+            feature_dict[feature] = value if value is not None else 0.0
             
-    return _features_df
-
-def get_default_features():
-    """
-    Generates a fallback feature dictionary filled with column averages 
-    for completely new clients not found in the test dataset.
-    """
-    global _default_features
-    if _default_features is None:
-        df = get_features_df()
-        if not df.empty:
-            _default_features = df.mean().to_dict()
-        else:
-            model = get_model()
-            _default_features = {col: 0.0 for col in model.feature_name()}
-    return _default_features.copy()
+        return feature_dict
+    except ClientFeature.DoesNotExist:
+        return None
 
 def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency):
     """
-    Main scoring function. Converts currency, fetches client history,
-    updates requested loan parameters, and predicts default probability.
+    Main scoring function. Converts currency, fetches client data from DB,
+    updates requested loan parameters, saves to DB, and predicts default probability.
     """
     # Convert incoming financial data to base currency in real-time
     rate = get_currency_rate(currency, base_currency='RUB')
     amt_income_base = float(amt_income) * rate
     amt_credit_base = float(amt_credit) * rate
     
-    # Initialize Model and Client Data
+    # Initialize Model
     model = get_model()
     feature_names = model.feature_name()
     
-    df = get_features_df()
-    if sk_id_curr and not df.empty and sk_id_curr in df.index:
-        feature_dict = df.loc[sk_id_curr].to_dict()
+    # Fetch client features from database
+    if sk_id_curr:
+        feature_dict = get_client_features_dict(sk_id_curr)
+        if feature_dict is None:
+            return None, "Client not found in database"
     else:
-        feature_dict = get_default_features()
-        
+        return None, "Client ID not provided"
+    
     # Extract historical loan proportions to recalculate new annuity and goods price
     original_credit = max(float(feature_dict.get('AMT_CREDIT', 500000.0)), 1.0)
     original_annuity = float(feature_dict.get('AMT_ANNUITY', 25000.0))
@@ -133,7 +117,7 @@ def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency):
     
     # Recalculate the direct derivative ratios
     safe_income = max(amt_income_base, 1.0)
-    safe_annuity = max(feature_dict['AMT_ANNUITY'], 1.0) # Using max(..., 1.0) to prevent ZeroDivisionError
+    safe_annuity = max(feature_dict['AMT_ANNUITY'], 1.0)
     
     feature_dict['CREDIT_INCOME_RATIO'] = amt_credit_base / safe_income
     feature_dict['CREDIT_INCOME_PERCENT'] = amt_credit_base / safe_income

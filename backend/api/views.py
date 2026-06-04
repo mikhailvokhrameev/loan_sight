@@ -78,13 +78,22 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
         
+        # Check if user has a client ID assigned
+        if not user.sk_id_curr:
+            raise ValueError("User does not have a client ID (sk_id_curr) assigned")
+        
         # Invoke the external ML scoring function using user metadata and request data
+        # This also updates the ClientFeature in the database with new calculated values
         probability, risk_label = predict_credit_risk(
             sk_id_curr=user.sk_id_curr,
             amt_income=amt_income,
             amt_credit=amt_credit,
             currency=currency
         )
+        
+        # Handle case where client is not found in database
+        if probability is None:
+            raise ValueError(f"Failed to calculate risk: {risk_label}")
         
         # Save the application object into DB with calculated ML parameters and the owner
         serializer.save(
