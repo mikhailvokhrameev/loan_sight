@@ -1,11 +1,14 @@
-from rest_framework import viewsets, generics
+from rest_framework import viewsets, generics, status
+from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
+import logging
 from .models import Application
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
 from .utils import predict_credit_risk
 
+logger = logging.getLogger(__name__)
 User = get_user_model() # Get current user model
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -22,6 +25,24 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                {'message': 'User registered successfully', 'user': serializer.data},
+                status=status.HTTP_201_CREATED,
+                headers=headers
+            )
+        except Exception as e:
+            logger.error(f"Registration error: {str(e)}, errors: {serializer.errors}")
+            return Response(
+                {'error': serializer.errors if serializer.errors else str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     """

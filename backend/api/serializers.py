@@ -13,6 +13,7 @@ class UserSerializer(serializers.ModelSerializer): # Serializer for reading user
 class RegisterSerializer(serializers.ModelSerializer): # Serializer for user creation (POST /register)
     password = serializers.CharField(write_only=True, min_length=8)
     password2 = serializers.CharField(write_only=True)
+    sk_id_curr = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = User

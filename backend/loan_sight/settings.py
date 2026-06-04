@@ -47,6 +47,7 @@ INSTALLED_APPS = [ # List of Django applications
 
 MIDDLEWARE = [ # Intermediate request handlers
     'django.middleware.security.SecurityMiddleware', # Additional website protection
+    'corsheaders.middleware.CorsMiddleware', # CORS headers handling for cross-origin requests
     'django.contrib.sessions.middleware.SessionMiddleware', # Working with sessions
     'django.middleware.common.CommonMiddleware', # General improvements to query handling
     'django.middleware.csrf.CsrfViewMiddleware', # Protection against CSRF attacks
@@ -125,6 +126,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Custom User Model
 AUTH_USER_MODEL = 'api.User'
+
+# Django REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ],
+}
 
 # JWT Configuration
 SIMPLE_JWT = {

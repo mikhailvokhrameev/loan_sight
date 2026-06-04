@@ -8,6 +8,7 @@ export default function Register() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
   
   // Maps to the Home Credit dataset client tracking ID
   const [skIdCurr, setSkIdCurr] = useState('');
@@ -32,6 +33,12 @@ export default function Register() {
       return;
     }
     
+    // Verify passwords match
+    if (password !== password2) {
+      setError('Passwords do not match');
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -47,11 +54,15 @@ export default function Register() {
     } catch (err) {
       // Robust error extraction. Accounts for targeted validation arrays sent by backend frameworks like DRF field errors
       const errorMsg = 
-        err.response?.data?.email?.[0] || 
-        err.response?.data?.password?.[0] || 
+        err.response?.data?.error?.email?.[0] ||
+        err.response?.data?.error?.password?.[0] ||
+        err.response?.data?.error?.email ||
+        err.response?.data?.error?.non_field_errors?.[0] ||
+        err.response?.data?.error ||
         err.response?.data?.detail || 
         'Registration failed. Please check your data.';
       
+      console.error('Registration error:', err.response?.data);
       setError(errorMsg);
       setLoading(false); // Restore UI controls so the user can amend their inputs
     }
@@ -130,6 +141,20 @@ export default function Register() {
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              className="form-input"
+              required
+              disabled={loading || success}
+            />
+          </div>
+
+          {/* Confirm Password Input */}
+          <div className="form-group">
+            <label className="form-label">Confirm Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password2}
+              onChange={(e) => setPassword2(e.target.value)}
               className="form-input"
               required
               disabled={loading || success}
