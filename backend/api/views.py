@@ -1,4 +1,5 @@
-from rest_framework import viewsets, generics
+from rest_framework import viewsets, generics, status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
@@ -50,7 +51,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Intercepts the creation logic to automatically trigger the ML credit risk model
-        before saving the instance to the database.
+        before saving the instance to the database. Validates ML response to ensure user exists.
         """
         user = self.request.user
         amt_income = serializer.validated_data.get('amt_income')
@@ -65,9 +66,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             currency=currency
         )
         
+        # Stop the execution if the ML engine reports that the client is missing
+        if risk_label == 'Client not found in database':
+            raise ValidationError(
+                {"detail": "Your profile information could not be verified in our credit evaluation database."},
+                code=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Save the application object into DB with calculated ML parameters and the owner
         serializer.save(
             user=user,
             probability=probability,
-            risk_label=risk_label
+            risk_label=risk_label,
+            sk_id_curr=user.sk_id_curr
         )

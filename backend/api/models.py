@@ -20,6 +20,7 @@ class Application(models.Model): # Creates a table of loan applications
     probability = models.FloatField(null=True, blank=True)
     risk_label = models.CharField(max_length=20, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    sk_id_curr = models.IntegerField(null=True, blank=True)
     
     def __str__(self):
         return f"App #{self.id} - User {self.user.email} ({self.risk_label})"
