@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
 export default function AccountMenu({ theme, setTheme }) {
@@ -7,25 +7,47 @@ export default function AccountMenu({ theme, setTheme }) {
   const [user, setUser] = useState(null);
   const menuRef = useRef(null);
 
+  // Memoized fetch function to safely reuse it across multiple useEffect hooks
+  const fetchUser = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (token) {
+        // Append a timestamp parameter to bypass browser caching mechanisms for stale data
+        const res = await axios.get(`/api/me?_t=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setUser(res.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch user:", error);
+    }
+  }, []);
+
   // Optimizes networking overhead by fetching user session profiles 
   // exclusively when the dropdown drawer is expanded.
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        if (token) {
-          const res = await axios.get('/api/me', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          setUser(res.data);
-        }
-      } catch (error) {}
-    };
-    
     if (isOpen) {
       fetchUser();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchUser]);
+
+  // EVENT LISTENER: Re-fetches or invalidates state when profile updates elsewhere
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      // Instantly refresh the profile information if the menu is currently visible
+      if (isOpen) {
+        fetchUser();
+      } else {
+        // Clear state if the menu is closed to prevent stale UI flashes on next open
+        setUser(null);
+      }
+    };
+
+    window.addEventListener('userProfileUpdated', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('userProfileUpdated', handleProfileUpdate);
+    };
+  }, [isOpen, fetchUser]);
 
   // Detects window interaction layouts and automatically dismisses 
   // the contextual overlay menu if an external target node is selected.
@@ -61,7 +83,12 @@ export default function AccountMenu({ theme, setTheme }) {
           {user ? (
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
               <p className="text-sm text-gray-600 dark:text-gray-400">Your Account</p>
-              <p className="font-semibold text-gray-900 dark:text-white break-words">{user.email}</p>
+              {/* Display first and last name if available, otherwise fall back to email */}
+              <p className="font-semibold text-gray-900 dark:text-white break-words">
+                {user.firstName || user.lastName 
+                  ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
+                  : user.email}
+              </p>
             </div>
           ) : (
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">

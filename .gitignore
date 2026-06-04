@@ -145,8 +145,6 @@ postgres_data/
 docker-compose.override.yml
 
 # Large ML-models and DB
-model.txt
-ml_models/model.txt
 *.parquet
 ml_models/*.parquet
 

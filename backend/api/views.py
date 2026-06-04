@@ -1,14 +1,12 @@
 from rest_framework import viewsets, generics, status
-from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-import logging
 from .models import Application
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
 from .utils import predict_credit_risk
 
-logger = logging.getLogger(__name__)
 User = get_user_model() # Get current user model
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -25,24 +23,6 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
-    
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(
-                {'message': 'User registered successfully', 'user': serializer.data},
-                status=status.HTTP_201_CREATED,
-                headers=headers
-            )
-        except Exception as e:
-            logger.error(f"Registration error: {str(e)}, errors: {serializer.errors}")
-            return Response(
-                {'error': serializer.errors if serializer.errors else str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     """
@@ -71,19 +51,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """
         Intercepts the creation logic to automatically trigger the ML credit risk model
-        before saving the instance to the database.
+        before saving the instance to the database. Validates ML response to ensure user exists.
         """
         user = self.request.user
         amt_income = serializer.validated_data.get('amt_income')
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
         
-        # Check if user has a client ID assigned
-        if not user.sk_id_curr:
-            raise ValueError("User does not have a client ID (sk_id_curr) assigned")
-        
         # Invoke the external ML scoring function using user metadata and request data
-        # This also updates the ClientFeature in the database with new calculated values
         probability, risk_label = predict_credit_risk(
             sk_id_curr=user.sk_id_curr,
             amt_income=amt_income,
@@ -91,13 +66,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             currency=currency
         )
         
-        # Handle case where client is not found in database
-        if probability is None:
-            raise ValueError(f"Failed to calculate risk: {risk_label}")
+        # Stop the execution if the ML engine reports that the client is missing
+        if risk_label == 'Client not found in database':
+            raise ValidationError(
+                {"detail": "Your profile information could not be verified in our credit evaluation database."},
+                code=status.HTTP_400_BAD_REQUEST
+            )
         
         # Save the application object into DB with calculated ML parameters and the owner
         serializer.save(
             user=user,
             probability=probability,
-            risk_label=risk_label
+            risk_label=risk_label,
+            sk_id_curr=user.sk_id_curr
         )

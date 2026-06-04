@@ -44,13 +44,14 @@ export default function Dashboard() {
   // Historical Records Ingestion Handler
   const loadApplications = async () => {
     setLoading(true);
+    setError(''); // Clear previous errors
     try {
       const response = await applicationsAPI.getAll();
       // Gracefully handle both paginated structures (Django DRF default) and clean arrays
       const data = response.data.results ? response.data.results : response.data;
       setApplications(data);
     } catch (err) {
-      setError('Failed to load applications');
+      setError(err.response?.data?.detail || 'Failed to load applications');
     } finally {
       setLoading(false);
     }
@@ -96,29 +97,9 @@ export default function Dashboard() {
     }
   };
 
-  // // Transactional Purge Handler
-  // const handleDeleteApplication = async (id) => {
-  //   if (window.confirm('Are you sure you want to delete this application?')) {
-  //     try {
-  //       await applicationsAPI.delete(id);
-  //       // Instantly filter state array to omit deleted row without full reload
-  //       setApplications(applications.filter(app => app.id !== id));
-  //     } catch (err) {
-  //       setError('Failed to delete application');
-  //     }
-  //   }
-  // };
-
-
-  // DELETE FLOW (MODAL VERSION)
-  // Open custom confirmation modal instead of window.confirm
-  const openDeleteModal = (id) => {
-    setDeleteTargetId(id);
-    setShowDeleteModal(true);
-  };
-
   // Confirm deletion after user clicks "Delete"
   const confirmDeleteApplication = async () => {
+    setError(''); // Clear previous errors
     try {
       await applicationsAPI.delete(deleteTargetId);
 
@@ -128,7 +109,7 @@ export default function Dashboard() {
       setShowDeleteModal(false);
       setDeleteTargetId(null);
     } catch (err) {
-      setError('Failed to delete application');
+      setError(err.response?.data?.detail || 'Failed to delete application');
     }
   };
 
@@ -252,11 +233,22 @@ export default function Dashboard() {
                         {app.risk_label || 'Unknown'}
                       </span>
                     </div>
+
                     {/* Core Parameters Breakdown */}
                     <div className="mb-4">
-                      <p className="font-medium text-lg">{app.amt_credit} {app.currency}</p>
-                      <p className="text-sm text-muted">Income: {app.amt_income} {app.currency}</p>
+                      <p className="font-semibold text-lg text-gray-900 dark:text-white">
+                        {Number(app.amt_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })} {app.currency}
+                      </p>
+                      <p className="text-sm text-muted">
+                        Income: {Number(app.amt_income).toLocaleString(undefined, { minimumFractionDigits: 2 })} {app.currency}
+                      </p>
+
+                      {/* SK_ID_CURR visualization */}
+                      <p className="text-sm text-muted">
+                        Client ID: {app.sk_id_curr || 'N/A'}
+                      </p>
                     </div>
+
                     {/* Footer Row: Timestamp Logs and Action Buttons */}
                     <div className="flex justify-between items-center" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
                       <span className="text-xs text-muted">
@@ -264,7 +256,10 @@ export default function Dashboard() {
                       </span>
                       <button
                         className="btn btn-secondary flex items-center gap-2" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--error)' }}
-                        onClick={() => openDeleteModal(app.id)}
+                        onClick={() => {
+                          setDeleteTargetId(app.id);
+                          setShowDeleteModal(true);
+                        }}
                         title="Delete"
                       >
                         <TrashIcon /> Delete
@@ -306,7 +301,7 @@ export default function Dashboard() {
                   ? `${(Number(result.probability) * 100).toFixed(1)}%` 
                   : 'N/A'
               } <br/>
-              Requested: {result.amt_credit} {result.currency}
+              Requested: {Number(result.amt_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })} {result.currency}
             </p>
 
             {/* Modal Closer Control */}
