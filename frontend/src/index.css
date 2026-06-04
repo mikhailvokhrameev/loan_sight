@@ -28,10 +28,10 @@
 
 /* Overriding variables for the dark theme */
 body.dark-theme {
-  --bg-color: #111827;
-  --header-bg: #1f2937;
-  --card-bg: #1f2937;
-  --border-color: #374151;
+  --bg-color: #05070b;
+  --header-bg: #090c10;
+  --card-bg: #090c10;
+  --border-color: #2b2e31;
   
   --primary: #f9fafb;
   --primary-hover: #e5e7eb;
@@ -39,7 +39,7 @@ body.dark-theme {
   --text-main: #f9fafb;
   --text-muted: #9ca3af;
   
-  --error-bg: #982222;
+  --error-bg: #7f1d1d;
   --success-bg: #064e3b;
   --warning-bg: #78350f;
 }
@@ -50,9 +50,9 @@ body.dark-theme input[type="password"],
 body.dark-theme input[type="number"],
 body.dark-theme textarea,
 body.dark-theme select {
-  background-color: #1f2937 !important;
+  background-color: #090c10 !important;
   color: #f9fafb !important;
-  border-color: #374151 !important;
+  border-color: #2b2e31 !important;
 }
 
 body.dark-theme input[type="text"]:focus,
@@ -62,7 +62,7 @@ body.dark-theme input[type="number"]:focus,
 body.dark-theme textarea:focus,
 body.dark-theme select:focus {
   border-color: #f9fafb !important;
-  background-color: #1f2937 !important;
+  background-color: #090c10 !important;
 }
 
 body.dark-theme input[type="text"]:disabled,
@@ -71,7 +71,7 @@ body.dark-theme input[type="password"]:disabled,
 body.dark-theme input[type="number"]:disabled,
 body.dark-theme textarea:disabled,
 body.dark-theme select:disabled {
-  background-color: #111827 !important;
+  background-color: #05070b !important;
   color: #6b7280 !important;
   border-color: #4b5563 !important;
   opacity: 0.6;
@@ -99,17 +99,17 @@ a {
 }
 
 body.dark-theme .btn-primary {
-  color: #111827; 
+  color: #05070b; 
 }
 
 body.dark-theme .avatar-button {
-  background-color: #374151;
+  background-color: #161a20;
 }
 
 body.dark-theme .dropdown-item:hover {
-  background-color: #374151;
+  background-color: #161a20;
 }
 
 body.dark-theme .btn-secondary:hover {
-  background-color: #374151;
+  background-color: #161a20;
 }
