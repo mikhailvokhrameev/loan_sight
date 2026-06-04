@@ -1,14 +1,11 @@
-from rest_framework import viewsets, generics, status
-from rest_framework.response import Response
+from rest_framework import viewsets, generics
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-import logging
 from .models import Application
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
 from .utils import predict_credit_risk
 
-logger = logging.getLogger(__name__)
 User = get_user_model() # Get current user model
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -25,24 +22,6 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [AllowAny]
     serializer_class = RegisterSerializer
-    
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(
-                {'message': 'User registered successfully', 'user': serializer.data},
-                status=status.HTTP_201_CREATED,
-                headers=headers
-            )
-        except Exception as e:
-            logger.error(f"Registration error: {str(e)}, errors: {serializer.errors}")
-            return Response(
-                {'error': serializer.errors if serializer.errors else str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 class CurrentUserView(generics.RetrieveUpdateAPIView):
     """
@@ -78,22 +57,13 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
         
-        # Check if user has a client ID assigned
-        if not user.sk_id_curr:
-            raise ValueError("User does not have a client ID (sk_id_curr) assigned")
-        
         # Invoke the external ML scoring function using user metadata and request data
-        # This also updates the ClientFeature in the database with new calculated values
         probability, risk_label = predict_credit_risk(
             sk_id_curr=user.sk_id_curr,
             amt_income=amt_income,
             amt_credit=amt_credit,
             currency=currency
         )
-        
-        # Handle case where client is not found in database
-        if probability is None:
-            raise ValueError(f"Failed to calculate risk: {risk_label}")
         
         # Save the application object into DB with calculated ML parameters and the owner
         serializer.save(
