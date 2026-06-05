@@ -2,64 +2,40 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
-  // Extracting the authentication status from global auth context to handle route security
   const { isAuthenticated } = useAuth();
 
-  // If a user is already authenticated smoothly redirect them straight to the main dashboard
-  if (isAuthenticated) {
-    // The 'replace' attribute overrides the current entry in the history stack,
-    // ensuring that clicking the browser's "Back" button won't lock the user in a redirect loop.
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return (
-    // Public Landing Layout Container
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
-      
-      {/* Hero Section Headers */}
-      <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '1rem', letterSpacing: '-0.02em' }}>
-        Experiment with Credit Risk ML Model
+    <div className="flex flex-col items-center justify-center min-h-[70vh] py-12">
+      <h1 className="text-4xl md:text-5xl font-bold mb-6 tracking-tight text-main text-center">
+        Credit Risk Machine Learning
       </h1>
-      <p className="text-muted" style={{ fontSize: '1.125rem', maxWidth: '500px', marginBottom: '2rem' }}>
-        LoanSight uses advanced machine learning to provide credit scoring on Kaggle Home Credit Default Risk dataset.
+      <p className="text-muted text-lg max-w-xl text-center mb-10 leading-relaxed">
+        LoanSight utilizes advanced LightGBM models to provide instant credit scoring based on the Kaggle Home Credit dataset.
       </p>
-      
-      {/* Primary Call-to-Action Navigation Controls */}
-      <div className="flex gap-4 justify-center">
-        <Link to="/register" className="btn btn-primary btn-large">
+
+      <div className="flex gap-4 justify-center mb-20">
+        <Link to="/register" className="px-8 py-3 text-base font-semibold rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover shadow-md transition-all">
           Get Started
         </Link>
-        <Link to="/login" className="btn btn-secondary btn-large">
+        <Link to="/login" className="px-8 py-3 text-base font-semibold rounded-sm border border-border text-main bg-transparent hover:bg-gray-100 dark:hover:bg-[#161a20] transition-all">
           Log In
         </Link>
       </div>
-      
-      {/* Feature Showcase Grid - Details the internal processing flow for end users */}
-      <div className="grid mt-4 pt-4" style={{ marginTop: '4rem', textAlign: 'left', width: '100%' }}>
-        
-        {/* Input Collection Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>1. Choose a Home Credit cient profile</h3>
-          <p className="text-sm text-muted">Select a client based on his SK_ID_CURR</p>
-        </div>
 
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>2. Simple Input</h3>
-          <p className="text-sm text-muted">Enter basic applicant data including income and desired loan amount</p>
-        </div>
-        
-        {/* Machine Learning Evaluation Framework Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>3. ML Analysis</h3>
-          <p className="text-sm text-muted">ML model evaluates the profile against historical performance data.</p>
-        </div>
-        
-        {/* Automated Resolution Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>4. Instant Decision</h3>
-          <p className="text-sm text-muted">Receive a probability score and automated risk classification instantly.</p>
-        </div>
-        
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
+        {[
+          { title: "Client Profile", desc: "Select a profile based on Home Credit database ID." },
+          { title: "Smart Inputs", desc: "Define income and requested credit amounts easily." },
+          { title: "ML Processing", desc: "The model analyzes 200+ features in milliseconds." },
+          { title: "Instant Score", desc: "Get a transparent risk classification and probability." }
+        ].map((item, idx) => (
+          <div key={idx} className="bg-card border border-border rounded-md p-6 shadow-sm hover:shadow-md transition-shadow">
+            <h3 className="text-sm font-bold mb-2 text-main uppercase tracking-wider">{item.title}</h3>
+            <p className="text-sm text-muted leading-relaxed">{item.desc}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

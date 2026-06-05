@@ -54,13 +54,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         before saving the instance to the database. Validates ML response to ensure user exists.
         """
         user = self.request.user
+        sk_id_curr = serializer.validated_data.get('sk_id_curr') 
         amt_income = serializer.validated_data.get('amt_income')
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
         
         # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
-            sk_id_curr=user.sk_id_curr,
+            sk_id_curr=sk_id_curr,
             amt_income=amt_income,
             amt_credit=amt_credit,
             currency=currency
@@ -78,5 +79,5 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             user=user,
             probability=probability,
             risk_label=risk_label,
-            sk_id_curr=user.sk_id_curr
+            sk_id_curr=sk_id_curr
         )

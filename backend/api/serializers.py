@@ -13,11 +13,10 @@ class UserSerializer(serializers.ModelSerializer): # Serializer for reading user
 class RegisterSerializer(serializers.ModelSerializer): # Serializer for user creation (POST /register)
     password = serializers.CharField(write_only=True, min_length=8)
     password2 = serializers.CharField(write_only=True)
-    sk_id_curr = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'password2', 'first_name', 'last_name', 'sk_id_curr']
+        fields = ['email', 'password', 'password2', 'first_name', 'last_name']
 
     def validate(self, data):
         if data['password'] != data['password2']:
@@ -32,12 +31,11 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            sk_id_curr=validated_data.get('sk_id_curr')
         )
         return user
 
 class ApplicationSerializer(serializers.ModelSerializer): # Loan application serializer
     class Meta:
         model = Application
-        fields = ['id', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'created_at', 'sk_id_curr']
+        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'created_at', 'sk_id_curr']
         read_only_fields = ['id', 'probability', 'risk_label', 'created_at']

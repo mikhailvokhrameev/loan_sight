@@ -3,149 +3,72 @@ import { useNavigate } from 'react-router-dom';
 import { authAPI } from '../api';
 
 export default function Profile() {
-  // Profile Identity Fields State
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  // Mapping to the specific Home Credit operational dataset identifier
-  const [skIdCurr, setSkIdCurr] = useState('');
-
-  // Pipeline Feedback and Load-state Semaphores
-  const [loading, setLoading] = useState(true); // Locks the entire view during initial mount hydration
-  const [saving, setSaving] = useState(false);   // Disables inputs to prevent race-conditions during updates
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-
-  // Router Hooks
   const navigate = useNavigate();
 
-  // Component Initialization Lifecycle
-  // Fires strictly once upon initial component mounting to populate the profile data from the server
   useEffect(() => {
-    loadUserData();
+    authAPI.getCurrentUser().then(res => {
+      setFirstName(res.data.first_name || '');
+      setLastName(res.data.last_name || '');
+      setEmail(res.data.email);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
-  // Remote Ingestion Handler
-  const loadUserData = async () => {
-    try {
-      // Fetch full authenticated session footprint from the server backend
-      const response = await authAPI.getCurrentUser();
-      
-      // Populate state hooks. Using fallback logical OR operators ('') ensures 
-      // form input text nodes remain controlled even if database fields are null.
-      setFirstName(response.data.first_name || '');
-      setLastName(response.data.last_name || '');
-      setEmail(response.data.email);
-      setSkIdCurr(response.data.sk_id_curr || '');
-    } catch (err) {
-      setError('Failed to load user data');
-    } finally {
-      setLoading(false); // Relinquish mount lock to render the profile canvas
-    }
-  };
-
-  // Profile Patch Transaction Submission
   const handleSubmit = async (e) => {
-    e.preventDefault(); // Intercept browser submission pipeline
+    e.preventDefault();
     setSaving(true);
-    setError('');
-    setSuccess('');
-
+    setError(''); setSuccess('');
     try {
-      // Discard stringified representations and cast the domain ID to a clean integer before payload dispatch
-      await authAPI.updateProfile({
-        first_name: firstName,
-        last_name: lastName,
-        sk_id_curr: skIdCurr ? Number(skIdCurr) : null,
-      });
-      
-      // Fetch the freshly updated profile snapshot to synchronize local storage
-      const userResponse = await authAPI.getCurrentUser();
-      
-      // Cache the updated user object in local persistence for persistent sync across app tabs
-      localStorage.setItem('user', JSON.stringify(userResponse.data));
-      
+      await authAPI.updateProfile({ first_name: firstName, last_name: lastName });
       setSuccess('Profile updated successfully');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update profile');
-    } finally {
-      setSaving(false); // Re-enable text inputs and operational controls
-    }
+      setError('Failed to update profile');
+    } finally { setSaving(false); }
   };
 
-  // Prevents the flickering of empty inputs or flash of layout variables before the API request resolves.
-  if (loading) {
-    return <p className="text-center text-muted mt-4">Loading profile...</p>;
-  }
+  if (loading) return <div className="text-center mt-20 text-muted">Loading profile...</div>;
 
   return (
-    <div className="max-w-md mt-4" style={{ margin: '0 auto' }}>
-      <div className="card">
-        <h2 className="mb-4">Edit Profile</h2>
+    <div className="max-w-md w-full mx-auto mt-10">
+      <div className="bg-card border border-border rounded-md p-8 shadow-sm">
+        <h2 className="text-2xl font-bold mb-8 text-main">Profile Settings</h2>
 
-        {/* Dynamic Context Feedback Components */}
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
+        {error && <div className="p-4 rounded-sm text-sm mb-4 bg-error-bg text-error border border-red-200">{error}</div>}
+        {success && <div className="p-4 rounded-sm text-sm mb-4 bg-success-bg text-success border border-emerald-200">{success}</div>}
 
         <form onSubmit={handleSubmit}>
-          {/* Read-Only Account Email Anchor (Security Best Practice) */}
-          <div className="form-group">
-            <label className="form-label">Email</label>
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-2 text-main">Email</label>
             <input
               type="email"
-              className="form-input"
+              className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-gray-50 dark:bg-transparent text-muted cursor-not-allowed outline-none transition-colors"
               value={email}
-              disabled // Accounts cannot mutate their core email key via this configuration panel
-              style={{ backgroundColor: '#f3f4f6', color: '#9ca3af' }}
+              disabled
             />
           </div>
 
-          {/* First Name Field */}
-          <div className="form-group">
-            <label className="form-label">First Name</label>
-            <input
-              type="text"
-              className="form-input"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              disabled={saving} // Lock input elements during active submission pipelines
-            />
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-2 text-main">First Name</label>
+            <input type="text" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none transition-all" value={firstName} onChange={(e) => setFirstName(e.target.value)} disabled={saving} />
           </div>
 
-          {/* Last Name Field */}
-          <div className="form-group">
-            <label className="form-label">Last Name</label>
-            <input
-              type="text"
-              className="form-input"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              disabled={saving}
-            />
+          <div className="mb-8">
+            <label className="block text-sm font-medium mb-2 text-main">Last Name</label>
+            <input type="text" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none transition-all" value={lastName} onChange={(e) => setLastName(e.target.value)} disabled={saving} />
           </div>
 
-          {/* Domain Specific Tracking Profile ID */}
-          <div className="form-group">
-            <label className="form-label">Home Credit Client ID (SK_ID_CURR)</label>
-            <input
-              type="number"
-              className="form-input"
-              value={skIdCurr}
-              onChange={(e) => setSkIdCurr(e.target.value)}
-              disabled={saving}
-              placeholder="e.g. 100002"
-            />
-          </div>
-
-          {/* Form Command Controls Footer */}
-          <div className="flex gap-2 mt-4">
-            {/* Submit Control Trigger */}
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+          <div className="flex gap-4">
+            <button type="submit" className="flex-1 py-2 text-sm font-bold bg-primary text-white dark:text-[#05070b] rounded-sm hover:bg-primary-hover transition-all disabled:opacity-50" disabled={saving}>
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-            
-            {/* Context Dismissal Navigation Trigger */}
-            <button type="button" className="btn btn-secondary" onClick={() => navigate('/dashboard')}>
+            <button type="button" className="flex-1 py-2 text-sm font-bold border border-border text-main bg-transparent hover:bg-gray-100 dark:hover:bg-[#161a20] rounded-sm transition-all" onClick={() => navigate('/dashboard')}>
               Back
             </button>
           </div>

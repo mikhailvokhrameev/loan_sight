@@ -4,50 +4,30 @@ import { PlusCircleIcon, HistoryIcon, TrashIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {
-  // UI Layout and Navigation States
   const [activeTab, setActiveTab] = useState('new-assessment');
   const [applications, setApplications] = useState([]);
-  
-  // Network Pipeline Semaphores
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
-  // Modal Overlay Controls
   const [showModal, setShowModal] = useState(false);
-
-  // Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
-  
-  // Auth Session Lifecycle Global Hooks
   const { user } = useAuth();
 
-  // Controlled Form State Schema
   const [formData, setFormData] = useState({
-    amt_income: '',
-    amt_credit: '',
-    currency: 'RUB', // Defaults to RUB
+    sk_id_curr: '', amt_income: '', amt_credit: '', currency: 'RUB',
   });
-
-  // ML Model Output Payload Tracking State
   const [result, setResult] = useState(null);
 
-  // Lazy Loading Data Lifecycle Trigger
-  // Fetches history records only when the user explicitly shifts focus to the "History" panel
   useEffect(() => {
-    if (activeTab === 'history') {
-      loadApplications();
-    }
+    if (activeTab === 'history') loadApplications();
   }, [activeTab]);
 
-  // Historical Records Ingestion Handler
   const loadApplications = async () => {
     setLoading(true);
-    setError(''); // Clear previous errors
+    setError('');
     try {
       const response = await applicationsAPI.getAll();
-      // Gracefully handle both paginated structures (Django DRF default) and clean arrays
       const data = response.data.results ? response.data.results : response.data;
       setApplications(data);
     } catch (err) {
@@ -57,39 +37,25 @@ export default function Dashboard() {
     }
   };
 
-  // Dynamic Universal Input State Synchronizer
-  // Leverages computed property names to bind multiple inputs to a single state object
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Scoring Submission Dispatcher
   const handleSubmitAssessment = async (e) => {
-    e.preventDefault(); // Guard against page reloads
+    e.preventDefault();
     setLoading(true);
     setError('');
-    setSuccess('');
-    setResult(null); // Evict past data structures to clear state
-
     try {
-      // Parse semantic strings back into high-precision floating point configurations
       const response = await applicationsAPI.create({
+        sk_id_curr: Number(formData.sk_id_curr),
         amt_income: Number(formData.amt_income),
         amt_credit: Number(formData.amt_credit),
         currency: formData.currency,
       });
-      
-      // Store LightGBM inference metrics and open the notification dialogue
       setResult(response.data);
       setShowModal(true);
-      
-      // Reset form variables back to baseline defaults post successful validation
-      setFormData({
-        amt_income: '',
-        amt_credit: '',
-        currency: 'RUB',
-      });
+      setFormData({ sk_id_curr: '', amt_income: '', amt_credit: '', currency: 'RUB' });
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create assessment');
     } finally {
@@ -97,256 +63,137 @@ export default function Dashboard() {
     }
   };
 
-  // Confirm deletion after user clicks "Delete"
   const confirmDeleteApplication = async () => {
-    setError(''); // Clear previous errors
     try {
       await applicationsAPI.delete(deleteTargetId);
-
-      // Remove deleted item from UI state instantly
       setApplications(applications.filter(app => app.id !== deleteTargetId));
-
       setShowDeleteModal(false);
-      setDeleteTargetId(null);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete application');
+      setError('Failed to delete application');
     }
   };
 
-  // Maps API classification strings into semantic theme CSS badge classes
   const getRiskColor = (risk) => {
     if (!risk) return 'text-muted';
     switch (risk.toLowerCase()) {
-      case 'low': return 'badge-success';
-      case 'medium': return 'badge-warning';
-      case 'high': return 'badge-error';
+      case 'low': return 'bg-success-bg text-success';
+      case 'medium': return 'bg-warning-bg text-warning';
+      case 'high': return 'bg-error-bg text-error';
       default: return 'text-muted';
     }
   };
 
-  // Dynamic Fallback Evaluation
-  const getDisplayName = () => {
-    return user?.first_name || 'User';
-  };
-
   return (
-    <div>
-      <h1 className="mb-4 text-2xl" style={{ fontWeight: 600, fontSize: '1.5rem' }}>Dashboard</h1>
+    <div className="w-full">
+      <h1 className="mb-4 text-2xl font-semibold text-main">Dashboard</h1>
 
-      {/* Global Status Alerts */}
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
+      {error && <div className="p-4 rounded-sm text-sm mb-4 border border-red-300 bg-error-bg text-error">{error}</div>}
 
-      {/* Tab Switcher Headers Layout */}
-      <div className="tabs-header">
-        <button
-          className={`tab-button flex items-center gap-2 ${activeTab === 'new-assessment' ? 'active' : ''}`}
-          onClick={() => setActiveTab('new-assessment')}
-        >
-          <PlusCircleIcon /> New Assessment
-        </button>
-        <button
-          className={`tab-button flex items-center gap-2 ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          <HistoryIcon /> Request History
-        </button>
+      <div className="flex gap-6 border-b border-border mb-8">
+        {['new-assessment', 'history'].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`pb-4 px-1 flex items-center gap-2 text-sm font-medium transition-all border-b-2 ${
+              activeTab === tab ? 'border-primary text-main' : 'border-transparent text-muted hover:text-main'
+            }`}
+          >
+            {tab === 'new-assessment' ? <><PlusCircleIcon /> New Assessment</> : <><HistoryIcon /> Request History</>}
+          </button>
+        ))}
       </div>
 
-      {/* Main Reactive Tab Panel Engine */}
-      <div>
-        {/* VIEW A: Assessment Capture Panel */}
-        {activeTab === 'new-assessment' && (
-          <div className="card max-w-md" style={{ margin: 0 }}>
+      {activeTab === 'new-assessment' && (
+        <div className="flex justify-center mt-4">
+          <div className="bg-card border border-border rounded-md p-8 shadow-md w-full max-w-md">
+            <h2 className="text-xl mb-8 font-semibold text-center text-main">New Credit Risk Assessment</h2>
             <form onSubmit={handleSubmitAssessment}>
-              
-              {/* Operational Currency Selector */}
-              <div className="form-group">
-                <label className="form-label">Currency for Income & Loan</label>
-                <select
-                  name="currency"
-                  className="form-select"
-                  value={formData.currency}
-                  onChange={handleFormChange}
-                  disabled={loading}
-                >
-                  <option value="RUB">RUB</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="GBP">GBP</option>
-                  <option value="KZT">KZT</option>
-                  <option value="BYN">BYN</option>
+              <div className="mb-5">
+                <label className="block text-sm font-medium mb-2 text-main">Client ID</label>
+                <input type="number" name="sk_id_curr" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100002" disabled={loading} />
+              </div>
+              <div className="mb-5">
+                <label className="block text-sm font-medium mb-2 text-main">Currency</label>
+                <select name="currency" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.currency} onChange={handleFormChange} disabled={loading}>
+                  {['RUB', 'USD', 'EUR', 'GBP', 'KZT', 'BYN'].map(curr => <option key={curr} value={curr}>{curr}</option>)}
                 </select>
               </div>
-
-              {/* Monthly Income Field */}
-              <div className="form-group">
-                <label className="form-label">Monthly Income (in {formData.currency})</label>
-                <input
-                  type="number"
-                  name="amt_income"
-                  className="form-input"
-                  value={formData.amt_income}
-                  onChange={handleFormChange}
-                  required min="0" step="0.01" disabled={loading}
-                />
+              <div className="mb-5">
+                <label className="block text-sm font-medium mb-2 text-main">Monthly Income ({formData.currency})</label>
+                <input type="number" name="amt_income" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.amt_income} onChange={handleFormChange} required step="0.01" disabled={loading} />
               </div>
-
-              {/* Credit Principal Requirement Field */}
-              <div className="form-group">
-                <label className="form-label">Desired Loan Amount (in {formData.currency})</label>
-                <input
-                  type="number"
-                  name="amt_credit"
-                  className="form-input"
-                  value={formData.amt_credit}
-                  onChange={handleFormChange}
-                  required min="0" step="0.01" disabled={loading}
-                />
+              <div className="mb-8">
+                <label className="block text-sm font-medium mb-2 text-main">Desired Loan Amount ({formData.currency})</label>
+                <input type="number" name="amt_credit" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.amt_credit} onChange={handleFormChange} required step="0.01" disabled={loading} />
               </div>
-
-              {/* Submission Execution Control */}
-              <button type="submit" className="btn btn-primary w-full justify-center" disabled={loading}>
+              <button type="submit" className="w-full py-3 text-base font-medium rounded-sm bg-primary text-white dark:text-[#05070b] hover:bg-primary-hover transition-all disabled:opacity-60" disabled={loading}>
                 {loading ? 'Processing...' : 'Get Assessment'}
               </button>
             </form>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* VIEW B: Request Historical Footprint Grid */}
-        {activeTab === 'history' && (
-          <div>
-            {loading ? (
-              <p className="text-center text-muted mt-4">Loading history...</p>
-            ) : applications.length === 0 ? (
-              <p className="text-center text-muted mt-4">No applications found.</p>
-            ) : (
-              <div className="grid">
-                {applications.map((app, index) => (
-                  <div key={app.id} className="card">
-                    {/* Header Row: Tracking Context and Score Badging */}
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-muted">
-                        Request #{applications.length - index}
-                      </span>
-                      <span className={`badge ${getRiskColor(app.risk_label)}`}>
-                        {app.risk_label || 'Unknown'}
-                      </span>
-                    </div>
-
-                    {/* Core Parameters Breakdown */}
-                    <div className="mb-4">
-                      <p className="font-semibold text-lg text-gray-900 dark:text-white">
-                        {Number(app.amt_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })} {app.currency}
-                      </p>
-                      <p className="text-sm text-muted">
-                        Income: {Number(app.amt_income).toLocaleString(undefined, { minimumFractionDigits: 2 })} {app.currency}
-                      </p>
-
-                      {/* SK_ID_CURR visualization */}
-                      <p className="text-sm text-muted">
-                        Client ID: {app.sk_id_curr || 'N/A'}
-                      </p>
-                    </div>
-
-                    {/* Footer Row: Timestamp Logs and Action Buttons */}
-                    <div className="flex justify-between items-center" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
-                      <span className="text-xs text-muted">
-                        {new Date(app.created_at).toLocaleDateString()}
-                      </span>
-                      <button
-                        className="btn btn-secondary flex items-center gap-2" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--error)' }}
-                        onClick={() => {
-                          setDeleteTargetId(app.id);
-                          setShowDeleteModal(true);
-                        }}
-                        title="Delete"
-                      >
-                        <TrashIcon /> Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+      {activeTab === 'history' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {applications.map((app, index) => (
+            <div key={app.id} className="bg-card border border-border rounded-md p-6 shadow-sm">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-xs font-medium text-muted">Request #{applications.length - index}</span>
+                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getRiskColor(app.risk_label)}`}>
+                  {app.risk_label}
+                </span>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              <div className="mb-6">
+                <p className="font-bold text-xl text-main mb-1">{Number(app.amt_credit).toLocaleString()} {app.currency}</p>
+                <p className="text-xs text-muted">Income: {Number(app.amt_income).toLocaleString()} {app.currency}</p>
+                <p className="text-xs text-muted mt-1">Client ID: {app.sk_id_curr}</p>
+              </div>
+              <div className="flex justify-between items-center pt-4 border-t border-border">
+                <span className="text-[10px] text-muted">{new Date(app.created_at).toLocaleDateString('ru-RU')}</span>
+                <button
+                  onClick={() => { setDeleteTargetId(app.id); setShowDeleteModal(true); }}
+                  className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-error hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                >
+                  <TrashIcon /> delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* Modal Overlay Container: Machine Learning Results Output */}
+      {/* Result Modal */}
       {showModal && result && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 9999,
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <div className="card" style={{ maxWidth: '400px', width: '90%', textAlign: 'center', margin: '0 auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h2 className="mb-4" style={{ fontSize: '1.25rem' }}>Assessment Complete</h2>
-            
-            <p className="mb-4" style={{ fontSize: '1rem', color: 'var(--text-main)' }}>
-              <strong>{getDisplayName()}</strong>, your estimated credit risk is:
-            </p>
-            
-            {/* Dynamic Model Output Badge */}
-            <div className="mb-4 flex justify-center">
-              <span className={`badge ${getRiskColor(result.risk_label)}`} style={{ fontSize: '1.1rem', padding: '0.5rem 1rem' }}>
-                {result.risk_label ? `${result.risk_label} Risk` : 'Prediction Unavailable'}
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-sm text-center">
+            <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
+            <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
+            <div className="mb-6">
+              <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(result.risk_label)}`}>
+                {result.risk_label} Risk
               </span>
             </div>
-            
-            {/* Analytical Metadata Diagnostics Block */}
-            <p className="text-sm text-muted mb-4">
-              Probability Score: {
-                result.probability !== undefined && result.probability !== null 
-                  ? `${(Number(result.probability) * 100).toFixed(1)}%` 
-                  : 'N/A'
-              } <br/>
-              Requested: {Number(result.amt_credit).toLocaleString(undefined, { minimumFractionDigits: 2 })} {result.currency}
+            <p className="text-sm text-muted mb-8 leading-relaxed">
+              Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
+              Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
             </p>
-
-            {/* Modal Closer Control */}
-            <button className="btn btn-primary w-full justify-center" onClick={() => setShowModal(false)}>
+            <button className="w-full py-2 bg-primary text-white dark:text-[#05070b] font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
               Close
             </button>
           </div>
         </div>
       )}
-       {/* Delete Confirmation Modal */}
+
+      {/* Delete Modal */}
       {showDeleteModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 10000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }}>
-          <div className="card" style={{ maxWidth: '380px', width: '90%', textAlign: 'center' }}>
-            <h2 className="mb-2">Delete application?</h2>
-
-            <p className="text-sm text-muted mb-4">
-              This action cannot be undone.
-            </p>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button
-                className="btn btn-secondary w-full"
-                onClick={() => {
-                  setShowDeleteModal(false);
-                  setDeleteTargetId(null);
-                }}
-              >
-                Cancel
-              </button>
-
-              <button
-                className="btn w-full"
-                style={{ backgroundColor: 'var(--error)', color: 'white' }}
-                onClick={confirmDeleteApplication}
-              >
-                Delete
-              </button>
+        <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-md p-6 shadow-xl w-full max-w-[340px] text-center">
+            <h2 className="text-lg font-semibold text-main mb-2">Are you sure?</h2>
+            <p className="text-sm text-muted mb-6">This assessment history will be permanently removed.</p>
+            <div className="flex gap-3">
+              <button className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-gray-100 dark:hover:bg-[#161a20] rounded-sm transition-all" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+              <button className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all" onClick={confirmDeleteApplication}>Delete</button>
             </div>
           </div>
         </div>
