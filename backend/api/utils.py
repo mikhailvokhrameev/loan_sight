@@ -83,13 +83,13 @@ def get_client_features_dict(sk_id_curr):
     except ClientFeature.DoesNotExist:
         return None
 
-def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency):
+def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency, overrides=None):
     """
     Main scoring function. Converts currency, fetches client data from DB,
     updates requested loan parameters, and predicts default probability.
     """
     model = get_model()
-    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency)
+    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides=overrides)
     if error:
         return None, error
 
@@ -105,7 +105,7 @@ def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency):
     return prob, risk_label
 
 
-def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency):
+def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides=None):
     """
     Shared helper: converts currency, fetches client data, applies overrides,
     and returns (feature_names, X_arr) ready for model inference.
@@ -136,16 +136,36 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency):
     feature_dict['AMT_ANNUITY'] = amt_credit_base * annuity_ratio
     feature_dict['AMT_GOODS_PRICE'] = amt_credit_base * goods_ratio
 
-    safe_income = max(amt_income_base, 1.0)
-    safe_annuity = max(feature_dict['AMT_ANNUITY'], 1.0)
+    if overrides:
+        for raw_feature_name, new_value in overrides.items():
+            feature_dict[raw_feature_name] = new_value
 
-    feature_dict['CREDIT_INCOME_RATIO'] = amt_credit_base / safe_income
-    feature_dict['CREDIT_INCOME_PERCENT'] = amt_credit_base / safe_income
-    feature_dict['ANNUITY_INCOME_RATIO'] = feature_dict['AMT_ANNUITY'] / safe_income
-    feature_dict['ANNUITY_INCOME_PERCENT'] = feature_dict['AMT_ANNUITY'] / safe_income
-    feature_dict['CREDIT_ANNUITY_RATIO'] = amt_credit_base / safe_annuity
-    feature_dict['CREDIT_TERM'] = annuity_ratio
-    feature_dict['CREDIT_GOODS_RATIO'] = goods_ratio
+    safe_income  = max(feature_dict.get('AMT_INCOME_TOTAL', amt_income_base) or amt_income_base, 1.0)
+    safe_credit  = max(feature_dict.get('AMT_CREDIT', amt_credit_base) or amt_credit_base, 1.0)
+    safe_annuity = max(feature_dict.get('AMT_ANNUITY', 1.0) or 1.0, 1.0)
+    safe_goods   = max(feature_dict.get('AMT_GOODS_PRICE', safe_credit) or safe_credit, 1.0)
+    days_birth   = feature_dict.get('DAYS_BIRTH', -1.0) or -1.0
+    days_employed = feature_dict.get('DAYS_EMPLOYED', 0.0) or 0.0
+    own_car_age  = feature_dict.get('OWN_CAR_AGE', 0.0) or 0.0
+    days_phone   = feature_dict.get('DAYS_LAST_PHONE_CHANGE', 0.0) or 0.0
+    e1 = feature_dict.get('EXT_SOURCE_1') or 0.0
+    e2 = feature_dict.get('EXT_SOURCE_2') or 0.0
+    e3 = feature_dict.get('EXT_SOURCE_3') or 0.0
+
+    feature_dict['CREDIT_ANNUITY_RATIO']    = safe_credit / safe_annuity
+    feature_dict['CREDIT_INCOME_RATIO']     = safe_credit / safe_income
+    feature_dict['ANNUITY_INCOME_RATIO']    = safe_annuity / safe_income
+    feature_dict['CREDIT_INCOME_PERCENT']   = safe_credit / safe_income
+    feature_dict['ANNUITY_INCOME_PERCENT']  = safe_annuity / safe_income
+    feature_dict['CREDIT_TERM']             = safe_credit / safe_annuity
+    feature_dict['DAYS_EMPLOYED_PERCENT']   = days_employed / (abs(days_birth) or 1.0)
+    feature_dict['CREDIT_GOODS_RATIO']      = safe_credit / safe_goods
+    feature_dict['EXT_SOURCES_MEAN']        = (e1 + e2 + e3) / 3.0
+    feature_dict['EXT_SOURCES_PROD']        = e1 * e2 * e3
+    feature_dict['EXT_SOURCES_STD']         = float(np.std([e1, e2, e3]))
+    feature_dict['EMPLOYED_TO_BIRTH_RATIO'] = days_employed / (abs(days_birth) or 1.0)
+    feature_dict['CAR_TO_BIRTH_RATIO']      = own_car_age / (abs(days_birth / 365.0) or 1.0)
+    feature_dict['PHONE_TO_BIRTH_RATIO']    = abs(days_phone) / (abs(days_birth) or 1.0)
 
     X = []
     for col in feature_names:
@@ -158,14 +178,14 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency):
     return feature_names, X_arr, None
 
 
-def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15):
+def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15, overrides=None):
     """
     Returns SHAP waterfall data:
       {expected_value, features: {name: float}, other_sum, n_other}
     Values are in log-odds space (LightGBM margin output).
     """
     model = get_model()
-    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency)
+    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides=overrides)
     if error:
         raise ValueError(error)
 

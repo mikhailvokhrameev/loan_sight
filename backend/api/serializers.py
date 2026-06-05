@@ -35,7 +35,14 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
         return user
 
 class ApplicationSerializer(serializers.ModelSerializer): # Loan application serializer
+    overrides = serializers.DictField(
+        child=serializers.FloatField(allow_null=True),
+        required=False,
+        default=dict,
+        write_only=True,
+    )
+
     class Meta:
         model = Application
-        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at']
+        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at', 'overrides']
         read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at']

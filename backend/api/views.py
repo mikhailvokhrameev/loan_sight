@@ -59,19 +59,21 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         before saving the instance to the database. Validates ML response to ensure user exists.
         """
         user = self.request.user
-        sk_id_curr = serializer.validated_data.get('sk_id_curr') 
+        sk_id_curr = serializer.validated_data.get('sk_id_curr')
         amt_income = serializer.validated_data.get('amt_income')
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
-        
+        overrides = serializer.validated_data.get('overrides') or {}
+
         # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
             sk_id_curr=sk_id_curr,
             amt_income=amt_income,
             amt_credit=amt_credit,
-            currency=currency
+            currency=currency,
+            overrides=overrides,
         )
-        
+
         # Stop the execution if the ML engine reports that the client is missing
         if risk_label == 'Client not found in database':
             raise ValidationError(
@@ -86,6 +88,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 amt_income=amt_income,
                 amt_credit=amt_credit,
                 currency=currency,
+                overrides=overrides,
             )
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
@@ -108,6 +111,7 @@ class ExplainView(APIView):
         amt_income = request.data.get('amt_income')
         amt_credit = request.data.get('amt_credit')
         currency = request.data.get('currency', 'RUB')
+        overrides = request.data.get('overrides') or {}
 
         if not all([sk_id_curr, amt_income, amt_credit]):
             return Response(
@@ -121,6 +125,7 @@ class ExplainView(APIView):
                 amt_income=amt_income,
                 amt_credit=amt_credit,
                 currency=currency,
+                overrides=overrides,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
