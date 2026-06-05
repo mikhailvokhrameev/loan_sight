@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { applicationsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
+import ShapWaterfallChart from '../components/ShapWaterfallChart';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('new-assessment');
@@ -166,7 +167,7 @@ export default function Dashboard() {
       {/* Result Modal */}
       {showModal && result && (
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-sm text-center">
+          <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${result.shap_values ? 'max-w-2xl' : 'max-w-sm'}`}>
             <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
             <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
             <div className="mb-6">
@@ -174,11 +175,12 @@ export default function Dashboard() {
                 {result.risk_label} Risk
               </span>
             </div>
-            <p className="text-sm text-muted mb-8 leading-relaxed">
+            <p className="text-sm text-muted mb-4 leading-relaxed">
               Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
               Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
             </p>
-            <button className="w-full py-2 bg-primary text-white dark:text-[#05070b] font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
+            <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
+            <button className="w-full mt-6 py-2 bg-primary text-white dark:text-[#05070b] font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
               Close
             </button>
           </div>

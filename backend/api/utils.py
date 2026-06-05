@@ -160,7 +160,9 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency):
 
 def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15):
     """
-    Returns top_n features by |SHAP value| as {feature_name: float}.
+    Returns SHAP waterfall data:
+      {expected_value, features: {name: float}, other_sum, n_other}
+    Values are in log-odds space (LightGBM margin output).
     """
     model = get_model()
     feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency)
@@ -170,10 +172,26 @@ def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15):
     explainer = shap.TreeExplainer(model)
     shap_matrix = explainer.shap_values(X_arr)
 
+    # expected_value: scalar for binary classification, array for multiclass
+    ev = explainer.expected_value
+    expected_value = float(np.asarray(ev).flat[0])
+
     # shap_matrix shape: (1, n_features)
-    values = shap_matrix[0]
+    raw_values = shap_matrix[0]
 
-    indexed = sorted(enumerate(values), key=lambda x: abs(x[1]), reverse=True)
-    top = indexed[:top_n]
+    all_pairs = sorted(
+        ((feature_names[i], float(raw_values[i])) for i in range(len(feature_names))),
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )
 
-    return {feature_names[i]: float(v) for i, v in top}
+    top_features = all_pairs[:top_n]
+    other_features = all_pairs[top_n:]
+    other_sum = float(sum(v for _, v in other_features))
+
+    return {
+        "expected_value": expected_value,
+        "features": {name: val for name, val in top_features},
+        "other_sum": other_sum,
+        "n_other": len(other_features),
+    }
