@@ -120,4 +120,12 @@ export const applicationsAPI = {
     api.delete(`/applications/${id}/`),
 };
 
+export const clientsAPI = {
+  getPresets: () =>
+    api.get('/clients/presets/'),
+
+  search: (params) =>
+    api.get('/clients/search/', { params }),
+};
+
 export default api;

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { applicationsAPI } from '../api';
-import { PlusCircleIcon, HistoryIcon, TrashIcon } from '../components/Icons';
+import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
+import ClientSelector from './ClientSelector';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('new-assessment');
@@ -74,6 +75,11 @@ export default function Dashboard() {
     }
   };
 
+  const handleClientSelected = (sk_id_curr, _features) => {
+    setFormData(prev => ({ ...prev, sk_id_curr: String(sk_id_curr) }));
+    setActiveTab('new-assessment');
+  };
+
   const getRiskColor = (risk) => {
     if (!risk) return 'text-muted';
     switch (risk.toLowerCase()) {
@@ -91,15 +97,19 @@ export default function Dashboard() {
       {error && <div className="p-4 rounded-sm text-sm mb-4 border border-red-300 bg-error-bg text-error">{error}</div>}
 
       <div className="flex gap-6 border-b border-border mb-8">
-        {['new-assessment', 'history'].map((tab) => (
+        {[
+          { id: 'new-assessment', label: 'New Assessment', icon: <PlusCircleIcon /> },
+          { id: 'history', label: 'Request History', icon: <HistoryIcon /> },
+          { id: 'select-client', label: 'Select Client', icon: <UserIcon /> },
+        ].map(({ id, label, icon }) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={id}
+            onClick={() => setActiveTab(id)}
             className={`pb-4 px-1 flex items-center gap-2 text-sm font-medium transition-all border-b-2 ${
-              activeTab === tab ? 'border-primary text-main' : 'border-transparent text-muted hover:text-main'
+              activeTab === id ? 'border-primary text-main' : 'border-transparent text-muted hover:text-main'
             }`}
           >
-            {tab === 'new-assessment' ? <><PlusCircleIcon /> New Assessment</> : <><HistoryIcon /> Request History</>}
+            {icon} {label}
           </button>
         ))}
       </div>
@@ -162,6 +172,10 @@ export default function Dashboard() {
             </div>
           ))}
         </div>
+      )}
+
+      {activeTab === 'select-client' && (
+        <ClientSelector onClientSelected={handleClientSelected} />
       )}
 
       {/* Result Modal */}
