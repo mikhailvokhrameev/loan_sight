@@ -37,5 +37,5 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
 class ApplicationSerializer(serializers.ModelSerializer): # Loan application serializer
     class Meta:
         model = Application
-        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'created_at', 'sk_id_curr']
-        read_only_fields = ['id', 'probability', 'risk_label', 'created_at']
+        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at']
+        read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at']

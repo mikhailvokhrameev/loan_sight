@@ -1,11 +1,16 @@
+import logging
 from rest_framework import viewsets, generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from .models import Application
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
-from .utils import predict_credit_risk
+from .utils import predict_credit_risk, get_shap_values
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model() # Get current user model
 
@@ -73,11 +78,57 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 {"detail": "Your profile information could not be verified in our credit evaluation database."},
                 code=status.HTTP_400_BAD_REQUEST
             )
-        
+
+        shap_data = None
+        try:
+            shap_data = get_shap_values(
+                sk_id_curr=sk_id_curr,
+                amt_income=amt_income,
+                amt_credit=amt_credit,
+                currency=currency,
+            )
+        except Exception as exc:
+            logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
+
         # Save the application object into DB with calculated ML parameters and the owner
         serializer.save(
             user=user,
             probability=probability,
             risk_label=risk_label,
-            sk_id_curr=sk_id_curr
+            sk_id_curr=sk_id_curr,
+            shap_values=shap_data,
         )
+
+
+class ExplainView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        sk_id_curr = request.data.get('sk_id_curr')
+        amt_income = request.data.get('amt_income')
+        amt_credit = request.data.get('amt_credit')
+        currency = request.data.get('currency', 'RUB')
+
+        if not all([sk_id_curr, amt_income, amt_credit]):
+            return Response(
+                {"detail": "sk_id_curr, amt_income, and amt_credit are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            shap_data = get_shap_values(
+                sk_id_curr=int(sk_id_curr),
+                amt_income=amt_income,
+                amt_credit=amt_credit,
+                currency=currency,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as exc:
+            logger.error("ExplainView error for sk_id_curr=%s: %s", sk_id_curr, exc)
+            return Response(
+                {"detail": "Could not compute SHAP values. Please try again later."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"shap_values": shap_data})

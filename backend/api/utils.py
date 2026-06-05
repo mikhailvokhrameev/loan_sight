@@ -1,10 +1,14 @@
 import os
+import logging
 import requests
 import numpy as np
 import lightgbm as lgb
+import shap
 from django.conf import settings
 from django.core.cache import cache
 from .models import ClientFeature, RAW_FEATURES
+
+logger = logging.getLogger(__name__)
 
 # Lazy loading mechanism: the model is loaded into the server's RAM only once
 _model = None
@@ -82,72 +86,94 @@ def get_client_features_dict(sk_id_curr):
 def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency):
     """
     Main scoring function. Converts currency, fetches client data from DB,
-    updates requested loan parameters, saves to DB, and predicts default probability.
+    updates requested loan parameters, and predicts default probability.
     """
-    # Convert incoming financial data to base currency in real-time
-    rate = get_currency_rate(currency, base_currency='RUB')
-    amt_income_base = float(amt_income) * rate
-    amt_credit_base = float(amt_credit) * rate
-    
-    # Initialize Model
     model = get_model()
-    feature_names = model.feature_name()
-    
-    # Fetch client features from database
-    if sk_id_curr:
-        feature_dict = get_client_features_dict(sk_id_curr)
-        if feature_dict is None:
-            return None, "Client not found in database"
-    else:
-        return None, "Client ID not provided"
-    
-    # Extract historical loan proportions to recalculate new annuity and goods price
-    original_credit = max(float(feature_dict.get('AMT_CREDIT', 500000.0)), 1.0)
-    original_annuity = float(feature_dict.get('AMT_ANNUITY', 25000.0))
-    original_goods_price = float(feature_dict.get('AMT_GOODS_PRICE', original_credit))
-    
-    annuity_ratio = original_annuity / original_credit
-    goods_ratio = original_goods_price / original_credit
-    
-    # Overwrite base values with the new user input
-    feature_dict['AMT_INCOME_TOTAL'] = amt_income_base
-    feature_dict['AMT_CREDIT'] = amt_credit_base
-    feature_dict['AMT_ANNUITY'] = amt_credit_base * annuity_ratio
-    feature_dict['AMT_GOODS_PRICE'] = amt_credit_base * goods_ratio
-    
-    # Recalculate the direct derivative ratios
-    safe_income = max(amt_income_base, 1.0)
-    safe_annuity = max(feature_dict['AMT_ANNUITY'], 1.0)
-    
-    feature_dict['CREDIT_INCOME_RATIO'] = amt_credit_base / safe_income
-    feature_dict['CREDIT_INCOME_PERCENT'] = amt_credit_base / safe_income
-    feature_dict['ANNUITY_INCOME_RATIO'] = feature_dict['AMT_ANNUITY'] / safe_income
-    feature_dict['ANNUITY_INCOME_PERCENT'] = feature_dict['AMT_ANNUITY'] / safe_income
-    feature_dict['CREDIT_ANNUITY_RATIO'] = amt_credit_base / safe_annuity
-    
-    feature_dict['CREDIT_TERM'] = annuity_ratio
-    feature_dict['CREDIT_GOODS_RATIO'] = goods_ratio
-    
-    # Assemble the exact feature vector expected by the LightGBM model
-    X = []
-    for col in feature_names:
-        val = feature_dict.get(col, 0.0)
-        # Clean any corrupted NaN values before feeding to the model
-        if val is None or (isinstance(val, float) and np.isnan(val)):
-            val = 0.0
-        X.append(val)
-        
-    X_arr = np.array([X], dtype=np.float32)
-    
-    # Execute prediction
+    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency)
+    if error:
+        return None, error
+
     prob = float(model.predict(X_arr)[0])
-    
-    # Assign risk categorization based on Home Credit dataset baseline
+
     if prob < 0.07:
         risk_label = 'Low'
     elif prob < 0.14:
         risk_label = 'Medium'
     else:
         risk_label = 'High'
-        
+
     return prob, risk_label
+
+
+def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency):
+    """
+    Shared helper: converts currency, fetches client data, applies overrides,
+    and returns (feature_names, X_arr) ready for model inference.
+    """
+    rate = get_currency_rate(currency, base_currency='RUB')
+    amt_income_base = float(amt_income) * rate
+    amt_credit_base = float(amt_credit) * rate
+
+    model = get_model()
+    feature_names = model.feature_name()
+
+    if sk_id_curr:
+        feature_dict = get_client_features_dict(sk_id_curr)
+        if feature_dict is None:
+            return None, None, "Client not found in database"
+    else:
+        return None, None, "Client ID not provided"
+
+    original_credit = max(float(feature_dict.get('AMT_CREDIT', 500000.0)), 1.0)
+    original_annuity = float(feature_dict.get('AMT_ANNUITY', 25000.0))
+    original_goods_price = float(feature_dict.get('AMT_GOODS_PRICE', original_credit))
+
+    annuity_ratio = original_annuity / original_credit
+    goods_ratio = original_goods_price / original_credit
+
+    feature_dict['AMT_INCOME_TOTAL'] = amt_income_base
+    feature_dict['AMT_CREDIT'] = amt_credit_base
+    feature_dict['AMT_ANNUITY'] = amt_credit_base * annuity_ratio
+    feature_dict['AMT_GOODS_PRICE'] = amt_credit_base * goods_ratio
+
+    safe_income = max(amt_income_base, 1.0)
+    safe_annuity = max(feature_dict['AMT_ANNUITY'], 1.0)
+
+    feature_dict['CREDIT_INCOME_RATIO'] = amt_credit_base / safe_income
+    feature_dict['CREDIT_INCOME_PERCENT'] = amt_credit_base / safe_income
+    feature_dict['ANNUITY_INCOME_RATIO'] = feature_dict['AMT_ANNUITY'] / safe_income
+    feature_dict['ANNUITY_INCOME_PERCENT'] = feature_dict['AMT_ANNUITY'] / safe_income
+    feature_dict['CREDIT_ANNUITY_RATIO'] = amt_credit_base / safe_annuity
+    feature_dict['CREDIT_TERM'] = annuity_ratio
+    feature_dict['CREDIT_GOODS_RATIO'] = goods_ratio
+
+    X = []
+    for col in feature_names:
+        val = feature_dict.get(col, 0.0)
+        if val is None or (isinstance(val, float) and np.isnan(val)):
+            val = 0.0
+        X.append(val)
+
+    X_arr = np.array([X], dtype=np.float32)
+    return feature_names, X_arr, None
+
+
+def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15):
+    """
+    Returns top_n features by |SHAP value| as {feature_name: float}.
+    """
+    model = get_model()
+    feature_names, X_arr, error = _build_feature_array(sk_id_curr, amt_income, amt_credit, currency)
+    if error:
+        raise ValueError(error)
+
+    explainer = shap.TreeExplainer(model)
+    shap_matrix = explainer.shap_values(X_arr)
+
+    # shap_matrix shape: (1, n_features)
+    values = shap_matrix[0]
+
+    indexed = sorted(enumerate(values), key=lambda x: abs(x[1]), reverse=True)
+    top = indexed[:top_n]
+
+    return {feature_names[i]: float(v) for i, v in top}
