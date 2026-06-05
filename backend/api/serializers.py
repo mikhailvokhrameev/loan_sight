@@ -41,8 +41,14 @@ class ApplicationSerializer(serializers.ModelSerializer): # Loan application ser
         default=dict,
         write_only=True,
     )
+    categorical_overrides = serializers.DictField(
+        child=serializers.CharField(allow_null=True),
+        required=False,
+        default=dict,
+        write_only=True,
+    )
 
     class Meta:
         model = Application
-        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at', 'overrides']
+        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at', 'overrides', 'categorical_overrides']
         read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at']

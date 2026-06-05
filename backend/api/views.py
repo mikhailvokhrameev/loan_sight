@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from .models import Application, ClientFeature, RAW_FEATURES
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
-from .utils import predict_credit_risk, get_shap_values
+from .utils import predict_credit_risk, get_shap_values, LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,15 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         amt_credit = serializer.validated_data.get('amt_credit')
         currency = serializer.validated_data.get('currency', 'RUB')
         overrides = serializer.validated_data.get('overrides') or {}
+        categorical_overrides = serializer.validated_data.get('categorical_overrides') or {}
+
+        converted = {}
+        for feature, str_value in categorical_overrides.items():
+            mapping = LABEL_MAPPINGS.get(feature)
+            if mapping and str_value in mapping:
+                converted[feature] = float(mapping[str_value])
+
+        combined_overrides = {**overrides, **converted}
 
         # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
@@ -71,7 +80,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             amt_income=amt_income,
             amt_credit=amt_credit,
             currency=currency,
-            overrides=overrides,
+            overrides=combined_overrides,
         )
 
         # Stop the execution if the ML engine reports that the client is missing
@@ -88,7 +97,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 amt_income=amt_income,
                 amt_credit=amt_credit,
                 currency=currency,
-                overrides=overrides,
+                overrides=combined_overrides,
             )
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
@@ -112,6 +121,15 @@ class ExplainView(APIView):
         amt_credit = request.data.get('amt_credit')
         currency = request.data.get('currency', 'RUB')
         overrides = request.data.get('overrides') or {}
+        categorical_overrides = request.data.get('categorical_overrides') or {}
+
+        converted = {}
+        for feature, str_value in categorical_overrides.items():
+            mapping = LABEL_MAPPINGS.get(feature)
+            if mapping and str_value in mapping:
+                converted[feature] = float(mapping[str_value])
+
+        combined_overrides = {**overrides, **converted}
 
         if not all([sk_id_curr, amt_income, amt_credit]):
             return Response(
@@ -125,7 +143,7 @@ class ExplainView(APIView):
                 amt_income=amt_income,
                 amt_credit=amt_credit,
                 currency=currency,
-                overrides=overrides,
+                overrides=combined_overrides,
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -240,3 +258,42 @@ class ClientSearchView(APIView):
                 'buro_credit_active_active_mean': client.buro_credit_active_active_mean,
             })
         return Response(results)
+
+
+_NUMERIC_EDITABLE = [
+    'AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'DAYS_BIRTH',
+    'DAYS_EMPLOYED', 'CNT_FAM_MEMBERS', 'AMT_GOODS_PRICE',
+    'EXT_SOURCE_1', 'EXT_SOURCE_2', 'EXT_SOURCE_3',
+]
+
+
+class ClientFeaturesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, sk_id_curr):
+        try:
+            client = ClientFeature.objects.get(sk_id_curr=sk_id_curr)
+        except ClientFeature.DoesNotExist:
+            return Response({'detail': 'Client not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        numeric_features = {}
+        for feature in _NUMERIC_EDITABLE:
+            field = feature.lower()
+            val = getattr(client, field, None)
+            numeric_features[feature] = float(val) if val is not None else None
+
+        categorical_features = {}
+        for feature, inverse in LABEL_MAPPINGS_INVERSE.items():
+            field = feature.lower()
+            raw_val = getattr(client, field, None)
+            if raw_val is None:
+                categorical_features[feature] = None
+            else:
+                code = int(round(float(raw_val)))
+                categorical_features[feature] = inverse.get(code)
+
+        return Response({
+            'sk_id_curr': client.sk_id_curr,
+            'numeric_features': numeric_features,
+            'categorical_features': categorical_features,
+        })

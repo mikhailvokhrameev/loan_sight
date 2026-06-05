@@ -126,6 +126,9 @@ export const clientsAPI = {
 
   search: (params) =>
     api.get('/clients/search/', { params }),
+
+  getFeatures: (skIdCurr) =>
+    api.get(`/clients/features/${skIdCurr}/`),
 };
 
 export default api;

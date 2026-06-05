@@ -10,6 +10,44 @@ from .models import ClientFeature, RAW_FEATURES
 
 logger = logging.getLogger(__name__)
 
+LABEL_MAPPINGS = {
+    'FLAG_OWN_CAR': {
+        'No': 0, 'Yes': 1,
+    },
+    'FLAG_OWN_REALTY': {
+        'No': 0, 'Yes': 1,
+    },
+    'NAME_EDUCATION_TYPE': {
+        'Academic degree': 0,
+        'Higher education': 1,
+        'Incomplete higher': 2,
+        'Lower secondary': 3,
+        'Secondary / secondary special': 4,
+    },
+    'NAME_FAMILY_STATUS': {
+        'Civil marriage': 0,
+        'Married': 1,
+        'Separated': 2,
+        'Single / not married': 3,
+        'Widow': 4,
+    },
+    'NAME_INCOME_TYPE': {
+        'Businessman': 0,
+        'Commercial associate': 1,
+        'Maternity leave': 2,
+        'Pensioner': 3,
+        'State servant': 4,
+        'Student': 5,
+        'Unemployed': 6,
+        'Working': 7,
+    },
+}
+
+LABEL_MAPPINGS_INVERSE = {
+    feature: {v: k for k, v in mapping.items()}
+    for feature, mapping in LABEL_MAPPINGS.items()
+}
+
 # Lazy loading mechanism: the model is loaded into the server's RAM only once
 _model = None
 
