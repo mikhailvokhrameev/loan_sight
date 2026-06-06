@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { applicationsAPI, clientsAPI, modelsAPI } from '../api';
+import { experimentsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
@@ -8,7 +8,7 @@ import FeatureOverridePanel from '../components/FeatureOverridePanel';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('new-assessment');
-  const [applications, setApplications] = useState([]);
+  const [experiments, setExperiments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -42,21 +42,35 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'history') loadApplications();
+    if (activeTab === 'history') loadExperiments();
   }, [activeTab]);
 
-  const loadApplications = async () => {
+  const loadExperiments = async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await applicationsAPI.getAll();
+      const response = await experimentsAPI.getAll();
       const data = response.data.results ? response.data.results : response.data;
-      setApplications(data);
+      setExperiments(data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load applications');
+      setError(err.response?.data?.detail || 'Failed to load experiments');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Returns display-ready data for an experiment regardless of type or age.
+  // Old records (results=null) fall back to top-level fields.
+  const getExperimentDisplay = (exp) => {
+    if (exp.experiment_type === 'compare' && Array.isArray(exp.results) && exp.results.length >= 2) {
+      return { type: 'compare', a: exp.results[0], b: exp.results[1], score_diff_pp: exp.results[0].score_diff_pp };
+    }
+    if (Array.isArray(exp.results) && exp.results.length > 0) {
+      const r = exp.results[0];
+      return { type: 'single', risk_label: r.risk_label, probability: r.probability, model_name: r.model_name };
+    }
+    // fallback for old records
+    return { type: 'single', risk_label: exp.risk_label, probability: exp.probability, model_name: exp.ml_model_name };
   };
 
   const handleFormChange = (e) => {
@@ -92,7 +106,7 @@ export default function Dashboard() {
           categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
           model_id: selectedModelId,
         };
-        response = await applicationsAPI.create(payload);
+        response = await experimentsAPI.create(payload);
       }
       setResult(response.data);
       setShowModal(true);
@@ -109,13 +123,13 @@ export default function Dashboard() {
     }
   };
 
-  const confirmDeleteApplication = async () => {
+  const confirmDeleteExperiment = async () => {
     try {
-      await applicationsAPI.delete(deleteTargetId);
-      setApplications(applications.filter(app => app.id !== deleteTargetId));
+      await experimentsAPI.delete(deleteTargetId);
+      setExperiments(experiments.filter(exp => exp.id !== deleteTargetId));
       setShowDeleteModal(false);
     } catch (err) {
-      setError('Failed to delete application');
+      setError('Failed to delete experiment');
     }
   };
 
@@ -188,7 +202,7 @@ export default function Dashboard() {
         {[
           { id: 'new-assessment', label: 'New Assessment', icon: <PlusCircleIcon /> },
            { id: 'select-client', label: 'Select Client', icon: <UserIcon /> },
-          { id: 'history', label: 'Request History', icon: <HistoryIcon /> },
+          { id: 'history', label: 'Experiments', icon: <HistoryIcon /> },
         ].map(({ id, label, icon }) => (
           <button
             key={id}
@@ -355,31 +369,87 @@ export default function Dashboard() {
       )}
 
       {activeTab === 'history' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {applications.map((app, index) => (
-            <div key={app.id} className="bg-card border border-border rounded-md p-6 shadow-sm">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-xs font-medium text-muted">Request #{applications.length - index}</span>
-                <span className={`px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(app.risk_label)}`}>
-                  {app.risk_label}
-                </span>
-              </div>
-              <div className="mb-6">
-                <p className="font-bold text-xl text-main mb-1">{Number(app.amt_credit).toLocaleString()} {app.currency}</p>
-                <p className="text-xs text-muted">Income: {Number(app.amt_income).toLocaleString()} {app.currency}</p>
-                <p className="text-xs text-muted mt-1">Client ID: {app.sk_id_curr}</p>
-              </div>
-              <div className="flex justify-between items-center pt-4 border-t border-border">
-                <span className="text-[10px] text-muted">{new Date(app.created_at).toLocaleDateString('ru-RU')}</span>
-                <button
-                  onClick={() => { setDeleteTargetId(app.id); setShowDeleteModal(true); }}
-                  className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-error hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                >
-                  <TrashIcon /> delete
-                </button>
-              </div>
+        <div>
+          {experiments.length > 0 && (
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={async () => {
+                  if (!window.confirm('Delete all experiments?')) return;
+                  try { await experimentsAPI.clearAll(); setExperiments([]); }
+                  catch { setError('Failed to clear history'); }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-error border border-error rounded-sm hover:bg-error-bg transition-colors"
+              >
+                <TrashIcon /> Clear all
+              </button>
             </div>
-          ))}
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {experiments.map((exp, index) => {
+              const display = getExperimentDisplay(exp);
+              return (
+                <div key={exp.id} className="bg-card border border-border rounded-md p-6 shadow-sm">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-xs font-medium text-muted">#{experiments.length - index}</span>
+                    {display.type === 'compare' ? (
+                      <span className="px-2 py-1 rounded-full text-[10px] font-bold tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        COMPARE
+                      </span>
+                    ) : (
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(display.risk_label)}`}>
+                        {display.risk_label}
+                      </span>
+                    )}
+                  </div>
+
+                  {display.type === 'compare' ? (
+                    <div className="mb-4 space-y-2">
+                      {[display.a, display.b].map((m, i) => (
+                        <div key={i} className="flex justify-between items-center text-xs">
+                          <span className="text-muted truncate max-w-[120px]">{m.model_name}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-main font-medium">{(m.probability * 100).toFixed(1)}%</span>
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${getRiskColor(m.risk_label)}`}>{m.risk_label}</span>
+                          </div>
+                        </div>
+                      ))}
+                      <p className="text-xs text-muted pt-1">
+                        Diff: <span className={`font-semibold ${display.score_diff_pp < 5 ? 'text-success' : display.score_diff_pp < 15 ? 'text-warning' : 'text-error'}`}>
+                          {display.score_diff_pp} pp
+                        </span>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <p className="text-lg font-bold text-main">
+                        {display.probability != null ? `${(display.probability * 100).toFixed(1)}%` : '—'}
+                      </p>
+                      {display.model_name && (
+                        <p className="text-xs text-muted mt-0.5">{display.model_name}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mb-4">
+                    <p className="text-xs text-muted">Client ID: {exp.sk_id_curr}</p>
+                    <p className="text-xs text-muted mt-0.5">
+                      {Number(exp.amt_credit).toLocaleString()} {exp.currency}
+                    </p>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-4 border-t border-border">
+                    <span className="text-[10px] text-muted">{new Date(exp.created_at).toLocaleDateString('ru-RU')}</span>
+                    <button
+                      onClick={() => { setDeleteTargetId(exp.id); setShowDeleteModal(true); }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-error hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                    >
+                      <TrashIcon /> delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -472,7 +542,7 @@ export default function Dashboard() {
             <p className="text-sm text-muted mb-6">This assessment history will be permanently removed.</p>
             <div className="flex gap-3">
               <button className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-hover-bg rounded-sm transition-all" onClick={() => setShowDeleteModal(false)}>Cancel</button>
-              <button className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all" onClick={confirmDeleteApplication}>Delete</button>
+              <button className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all" onClick={confirmDeleteExperiment}>Delete</button>
             </div>
           </div>
         </div>

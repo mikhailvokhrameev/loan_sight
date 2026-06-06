@@ -102,22 +102,18 @@ export const authAPI = {
     api.patch('/auth/me/', data),
 };
 
-/**
- * Applications Service Wrapper:
- * Handles CRUD operations and analytical operations for credit scoring application workflows.
- */
-export const applicationsAPI = {
-  // Retrieves a listing of all past credit assessments submitted by the active user
+export const experimentsAPI = {
   getAll: () =>
-    api.get('/applications/'),
-  
-  // Creates and saves a new standalone credit application entry
+    api.get('/experiments/'),
+
   create: (data) =>
-    api.post('/applications/', data),
-  
-  // Hard deletes a selected credit application record from the database
+    api.post('/experiments/', data),
+
   delete: (id) =>
-    api.delete(`/applications/${id}/`),
+    api.delete(`/experiments/${id}/`),
+
+  clearAll: () =>
+    api.delete('/experiments/clear/'),
 };
 
 export const modelsAPI = {

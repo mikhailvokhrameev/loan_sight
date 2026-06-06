@@ -26,8 +26,8 @@ class MLModel(models.Model):
         return self.name
 
 
-class Application(models.Model): # Creates a table of loan applications
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications') # Each application belongs to one user
+class Experiment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='experiments')
     amt_income = models.DecimalField(max_digits=15, decimal_places=2)
     amt_credit = models.DecimalField(max_digits=15, decimal_places=2)
     currency = models.CharField(max_length=10, default='RUB')
@@ -40,13 +40,22 @@ class Application(models.Model): # Creates a table of loan applications
         'MLModel',
         null=True, blank=True,
         on_delete=models.SET_NULL,
-        related_name='applications',
+        related_name='experiments',
     )
-    
-    def __str__(self):
-        return f"App #{self.id} - User {self.user.email} ({self.risk_label})"
+    experiment_type = models.CharField(
+        max_length=10,
+        choices=[('single', 'Single'), ('compare', 'Compare')],
+        default='single',
+    )
+    results = models.JSONField(null=True, blank=True)
 
-from django.db import models
+    class Meta:
+        db_table = 'api_experiment'
+        verbose_name = 'Experiment'
+        verbose_name_plural = 'Experiments'
+
+    def __str__(self):
+        return f"Experiment #{self.id} - {self.user.email} ({self.experiment_type})"
 
 class ClientFeature(models.Model):
     # Unique client ID from the dataset (Primary Key)
