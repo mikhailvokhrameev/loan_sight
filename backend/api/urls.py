@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CustomTokenObtainPairView, RegisterView, CurrentUserView, ApplicationViewSet, ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView, MLModelListView
+from .views import CustomTokenObtainPairView, RegisterView, CurrentUserView, ApplicationViewSet, ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView, MLModelListView, CompareModelsView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 # Standard DRF Router initialization for automated handling of RESTful viewsets
@@ -19,5 +19,6 @@ urlpatterns = [
     path('clients/search/', ClientSearchView.as_view(), name='client_search'),
     path('clients/features/<int:sk_id_curr>/', ClientFeaturesView.as_view(), name='client_features'),
     path('models/', MLModelListView.as_view(), name='ml_models'),
+    path('compare/', CompareModelsView.as_view(), name='compare_models'),
     path('', include(router.urls)), # connects automatically generated routes from the DRF router to the application
 ]

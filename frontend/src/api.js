@@ -122,6 +122,7 @@ export const applicationsAPI = {
 
 export const modelsAPI = {
   getAll: () => api.get('/models/'),
+  compare: (data) => api.post('/compare/', data),
 };
 
 export const clientsAPI = {
