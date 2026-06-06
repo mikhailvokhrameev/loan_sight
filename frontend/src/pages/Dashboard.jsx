@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { applicationsAPI, clientsAPI } from '../api';
+import { applicationsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
@@ -17,6 +17,9 @@ export default function Dashboard() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const { user } = useAuth();
 
+  const [models, setModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState(null);
+
   const [formData, setFormData] = useState({ sk_id_curr: '' });
   const [currency, setCurrency] = useState('RUB');
   const [result, setResult] = useState(null);
@@ -27,6 +30,13 @@ export default function Dashboard() {
   const [assessmentMode, setAssessmentMode] = useState('auto');
   const [featuresLoading, setFeaturesLoading] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
+
+  useEffect(() => {
+    modelsAPI.getAll().then(res => {
+      setModels(res.data);
+      if (res.data.length > 0) setSelectedModelId(res.data[0].id);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'history') loadApplications();
@@ -67,6 +77,7 @@ export default function Dashboard() {
         currency: assessmentMode === 'manual' ? currency : 'RUB',
         overrides: assessmentMode === 'manual' ? numericOverrides : {},
         categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
+        model_id: selectedModelId,
       };
       const response = await applicationsAPI.create(payload);
       setResult(response.data);
@@ -258,6 +269,37 @@ export default function Dashboard() {
                 </>
               )}
 
+              {models.length > 1 && (
+                <div className="mb-5">
+                  <label className="block text-sm font-medium mb-2 text-main">
+                    Scoring Model
+                  </label>
+                  <select
+                    className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                    value={selectedModelId ?? ''}
+                    onChange={e => setSelectedModelId(Number(e.target.value))}
+                    disabled={loading}
+                  >
+                    {models.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.model_type})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedModelId && (() => {
+                    const m = models.find(x => x.id === selectedModelId);
+                    if (!m?.metrics) return null;
+                    return (
+                      <p className="text-xs text-muted mt-1">
+                        {Object.entries(m.metrics)
+                          .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : v}`)
+                          .join(' · ')}
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
+
               <button type="submit" className="w-full py-3 text-base font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover transition-all disabled:opacity-60" disabled={loading}>
                 {loading ? 'Processing...' : 'Get Assessment'}
               </button>
@@ -314,6 +356,14 @@ export default function Dashboard() {
               Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
               Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
             </p>
+            {result.ml_model_name && (
+              <p className="text-xs text-muted mb-4">
+                Model:{' '}
+                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                  {result.ml_model_name}
+                </span>
+              </p>
+            )}
             <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
             <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
               Close

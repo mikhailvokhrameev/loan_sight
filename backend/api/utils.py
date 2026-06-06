@@ -116,7 +116,7 @@ def get_client_features_dict(sk_id_curr):
         for feature in RAW_FEATURES:
             sanitized_field = feature.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
             value = getattr(client, sanitized_field, None)
-            feature_dict[feature] = value if value is not None else 0.0
+            feature_dict[feature] = value  # None preserved → NaN in X_arr; models handle missing per their type
 
         return feature_dict
     except ClientFeature.DoesNotExist:
@@ -138,7 +138,9 @@ def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency, overrides=
     if error:
         return None, error
 
-    proba = float(estimator.predict_proba(X_arr)[0, 1])
+    from sklearn.pipeline import Pipeline
+    X_input = X_arr if isinstance(estimator, Pipeline) else np.where(np.isnan(X_arr), 0.0, X_arr).astype(np.float32)
+    proba = float(estimator.predict_proba(X_input)[0, 1])
 
     if proba < 0.07:
         risk_label = 'Low'
@@ -212,21 +214,21 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides
     feature_dict['ANNUITY_INCOME_RATIO']    = safe_annuity / safe_income
     feature_dict['CREDIT_INCOME_PERCENT']   = safe_credit / safe_income
     feature_dict['ANNUITY_INCOME_PERCENT']  = safe_annuity / safe_income
-    feature_dict['CREDIT_TERM']             = safe_credit / safe_annuity
+    feature_dict['CREDIT_TERM']             = safe_annuity / safe_credit  # annuity/credit, not credit/annuity
     feature_dict['DAYS_EMPLOYED_PERCENT']   = days_employed / (abs(days_birth) or 1.0)
     feature_dict['CREDIT_GOODS_RATIO']      = safe_credit / safe_goods
     feature_dict['EXT_SOURCES_MEAN']        = (e1 + e2 + e3) / 3.0
     feature_dict['EXT_SOURCES_PROD']        = e1 * e2 * e3
     feature_dict['EXT_SOURCES_STD']         = float(np.std([e1, e2, e3]))
     feature_dict['EMPLOYED_TO_BIRTH_RATIO'] = days_employed / (abs(days_birth) or 1.0)
-    feature_dict['CAR_TO_BIRTH_RATIO']      = own_car_age / (abs(days_birth / 365.0) or 1.0)
-    feature_dict['PHONE_TO_BIRTH_RATIO']    = abs(days_phone) / (abs(days_birth) or 1.0)
+    feature_dict['CAR_TO_BIRTH_RATIO']      = own_car_age / (abs(days_birth) or 1.0)  # days, not years
+    feature_dict['PHONE_TO_BIRTH_RATIO']    = days_phone / (abs(days_birth) or 1.0)   # signed, not abs
 
     X = []
     for col in feature_names:
-        val = feature_dict.get(col, 0.0)
+        val = feature_dict.get(col)
         if val is None or (isinstance(val, float) and np.isnan(val)):
-            val = 0.0
+            val = np.nan
         X.append(val)
 
     X_arr = np.array([X], dtype=np.float32)
@@ -248,12 +250,24 @@ def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15, over
     if error:
         raise ValueError(error)
 
-    if entry.model_type == 'logreg':
-        explainer = shap.LinearExplainer(estimator, X_arr)
-    else:
-        explainer = shap.TreeExplainer(estimator)
+    from sklearn.pipeline import Pipeline
 
-    shap_output = explainer.shap_values(X_arr)
+    if isinstance(estimator, Pipeline):
+        # Pipeline's SimpleImputer fills NaN with training means before scaling
+        X_for_shap = estimator[:-1].transform(X_arr)
+        clf = estimator.steps[-1][1]
+        # Zero background = training mean in StandardScaler space
+        X_background = np.zeros((1, X_for_shap.shape[1]))
+        if hasattr(clf, 'coef_'):
+            explainer = shap.LinearExplainer(clf, X_background)
+        else:
+            explainer = shap.TreeExplainer(clf)
+        shap_output = explainer.shap_values(X_for_shap)
+    else:
+        # Tree models: replace NaN with 0.0 (same as during training)
+        X_clean = np.where(np.isnan(X_arr), 0.0, X_arr).astype(np.float32)
+        explainer = shap.TreeExplainer(estimator)
+        shap_output = explainer.shap_values(X_clean)
 
     # Handle binary classification: some explainers return a list [class_0, class_1]
     if isinstance(shap_output, list):
