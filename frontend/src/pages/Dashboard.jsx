@@ -1,21 +1,192 @@
 import { useState, useEffect } from 'react';
 import { experimentsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
-import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
 import ClientSelector from './ClientSelector';
 import FeatureOverridePanel from '../components/FeatureOverridePanel';
+
+const getRiskColor = (risk) => {
+  if (!risk) return 'text-muted';
+  switch (risk.toLowerCase()) {
+    case 'low': return 'bg-success-bg text-success';
+    case 'medium': return 'bg-warning-bg text-warning';
+    case 'high': return 'bg-error-bg text-error';
+    default: return 'text-muted';
+  }
+};
+
+// Returns display-ready data regardless of experiment type or record age
+const getExperimentDisplay = (exp) => {
+  const probs = exp.probability;
+  const risks = exp.risk_label;
+  const meta = exp.results || [];
+
+  if (exp.experiment_type === 'compare') {
+    if (Array.isArray(probs) && probs.length >= 2) {
+      const diff = Math.round(Math.abs(probs[0] - probs[1]) * 10000) / 100;
+      return {
+        type: 'compare',
+        a: { probability: probs[0], risk_label: Array.isArray(risks) ? risks[0] : null, model_name: meta[0]?.name || meta[0]?.model_name || null, model_type: meta[0]?.model_type || null, latency_ms: meta[0]?.latency_ms || null },
+        b: { probability: probs[1], risk_label: Array.isArray(risks) ? risks[1] : null, model_name: meta[1]?.name || meta[1]?.model_name || null, model_type: meta[1]?.model_type || null, latency_ms: meta[1]?.latency_ms || null },
+        score_diff_pp: diff,
+      };
+    }
+    if (meta.length >= 2 && meta[0].probability != null) {
+      const diff = Math.round(Math.abs((meta[0].probability || 0) - (meta[1].probability || 0)) * 10000) / 100;
+      return {
+        type: 'compare',
+        a: { probability: meta[0].probability, risk_label: meta[0].risk_label, model_name: meta[0].model_name || meta[0].name || null, model_type: meta[0].model_type || null, latency_ms: meta[0].latency_ms || null },
+        b: { probability: meta[1].probability, risk_label: meta[1].risk_label, model_name: meta[1].model_name || meta[1].name || null, model_type: meta[1].model_type || null, latency_ms: meta[1].latency_ms || null },
+        score_diff_pp: diff,
+      };
+    }
+  }
+
+  if (Array.isArray(probs) && probs.length > 0) {
+    return {
+      type: 'single',
+      probability: probs[0],
+      risk_label: Array.isArray(risks) ? risks[0] : (risks ?? null),
+      model_name: meta[0]?.name || meta[0]?.model_name || exp.ml_model_name || null,
+    };
+  }
+};
+
+const ScoreDiffBlock = ({ scoreDiffPp }) => (
+  <div className="text-center mt-4">
+    <p className="text-sm text-muted">Score difference</p>
+    <p className={`text-2xl font-bold mt-1 ${
+      scoreDiffPp < 5 ? 'text-success' :
+      scoreDiffPp < 15 ? 'text-warning' : 'text-error'
+    }`}>
+      {scoreDiffPp} %
+    </p>
+    <p className="text-xs text-muted mt-1">
+      {scoreDiffPp < 5 ? 'Models agree' : scoreDiffPp < 15 ? 'Moderate disagreement' : 'Models significantly disagree'}
+    </p>
+  </div>
+);
+
+const ModalCloseButton = ({ onClick }) => (
+  <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={onClick}>
+    Close
+  </button>
+);
+
+const ModelBadge = ({ name }) => (
+  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+    {name}
+  </span>
+);
+
+const ModelOptions = ({ models }) => models.map(m => (
+  <option key={m.id} value={m.id}>{m.name} ({m.model_type})</option>
+));
+
+const ExperimentResultModal = ({ exp, onClose }) => {
+  const display = getExperimentDisplay(exp);
+  if (!display) return null;
+
+  const subtitle = (
+    <p className="text-sm text-muted mb-6 text-center">
+      Client ID: <strong>{exp.sk_id_curr}</strong>
+      {' · '}
+      {new Date(exp.created_at).toLocaleDateString('ru-RU')}
+    </p>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      {display.type === 'compare' ? (
+        <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <h2 className="text-xl font-bold mb-2 text-main text-center">Model Comparison</h2>
+          {subtitle}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[display.a, display.b].map((model, idx) => {
+              const shapData = (Array.isArray(exp.shap_values) ? exp.shap_values[idx] : null) ?? null;
+              return (
+                <div key={idx} className="bg-card border border-border rounded-md p-6">
+                  <p className="text-base font-semibold text-main">{model.model_name}</p>
+                  {model.model_type && (
+                    <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      {model.model_type}
+                    </span>
+                  )}
+                  <p className="text-3xl font-bold text-main mt-3">
+                    {(model.probability * 100).toFixed(1)}%
+                  </p>
+                  <span className={`inline-block mt-2 px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(model.risk_label)}`}>
+                    {model.risk_label}
+                  </span>
+                  {model.latency_ms && (
+                    <p className="text-xs text-muted mt-2">{model.latency_ms} ms</p>
+                  )}
+                  <div className="mt-4">
+                    <ShapWaterfallChart shapValues={shapData} loading={false} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <ScoreDiffBlock scoreDiffPp={display.score_diff_pp} />
+          <ModalCloseButton onClick={onClose} />
+        </div>
+      ) : (
+        (() => {
+          const shapData = exp.results?.[0]?.shap_values
+            ?? (Array.isArray(exp.shap_values) ? exp.shap_values[0] : exp.shap_values)
+            ?? null;
+          return (
+            <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${shapData ? 'max-w-2xl' : 'max-w-sm'}`} onClick={e => e.stopPropagation()}>
+              <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
+              {subtitle}
+              <div className="mb-6">
+                <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(display.risk_label)}`}>
+                  {display.risk_label} Risk
+                </span>
+              </div>
+              <p className="text-sm text-muted mb-4 leading-relaxed">
+                Probability Score:{' '}
+                <span className="text-main font-medium">
+                  {display.probability != null ? `${(display.probability * 100).toFixed(1)}%` : '—'}
+                </span>
+              </p>
+              {display.model_name && (
+                <p className="text-xs text-muted mb-4">
+                  Model: <ModelBadge name={display.model_name} />
+                </p>
+              )}
+              <ShapWaterfallChart shapValues={shapData} loading={false} />
+              <ModalCloseButton onClick={onClose} />
+            </div>
+          );
+        })()
+      )}
+    </div>
+  );
+};
+
+// Converts live compare API response to the same shape as stored experiments
+const normalizeCompareResult = (result, skIdCurr) => ({
+  sk_id_curr: skIdCurr,
+  created_at: new Date().toISOString(),
+  experiment_type: 'compare',
+  probability: [result.model_a.probability, result.model_b.probability],
+  risk_label: [result.model_a.risk_label, result.model_b.risk_label],
+  results: [
+    { name: result.model_a.name, model_type: result.model_a.model_type, probability: result.model_a.probability, risk_label: result.model_a.risk_label, latency_ms: result.model_a.latency_ms },
+    { name: result.model_b.name, model_type: result.model_b.model_type, probability: result.model_b.probability, risk_label: result.model_b.risk_label, latency_ms: result.model_b.latency_ms },
+  ],
+  shap_values: [result.model_a.shap_values, result.model_b.shap_values],
+});
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('new-assessment');
   const [experiments, setExperiments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
-  const { user } = useAuth();
 
   const [models, setModels] = useState([]);
   const [selectedModelId, setSelectedModelId] = useState(null);
@@ -24,7 +195,6 @@ export default function Dashboard() {
 
   const [formData, setFormData] = useState({ sk_id_curr: '' });
   const [currency, setCurrency] = useState('RUB');
-  const [result, setResult] = useState(null);
 
   const [clientFeatures, setClientFeatures] = useState(null);
   const [selectedExperiment, setSelectedExperiment] = useState(null);
@@ -33,6 +203,12 @@ export default function Dashboard() {
   const [assessmentMode, setAssessmentMode] = useState('auto');
   const [featuresLoading, setFeaturesLoading] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
+
+  const resetOverrides = () => {
+    setNumericOverrides({});
+    setCategoricalOverrides({});
+    setAssessmentMode('auto');
+  };
 
   useEffect(() => {
     modelsAPI.getAll().then(res => {
@@ -60,51 +236,12 @@ export default function Dashboard() {
     }
   };
 
-  // Returns display-ready data regardless of experiment type or record age
-  const getExperimentDisplay = (exp) => {
-    const probs = exp.probability;
-    const risks = exp.risk_label;
-    const meta = exp.results || [];
-
-    if (exp.experiment_type === 'compare') {
-      if (Array.isArray(probs) && probs.length >= 2) {
-        const diff = Math.round(Math.abs(probs[0] - probs[1]) * 10000) / 100;
-        return {
-          type: 'compare',
-          a: { probability: probs[0], risk_label: Array.isArray(risks) ? risks[0] : null, model_name: meta[0]?.name || meta[0]?.model_name || null },
-          b: { probability: probs[1], risk_label: Array.isArray(risks) ? risks[1] : null, model_name: meta[1]?.name || meta[1]?.model_name || null },
-          score_diff_pp: diff,
-        };
-      }
-      if (meta.length >= 2 && meta[0].probability != null) {
-        const diff = Math.round(Math.abs((meta[0].probability || 0) - (meta[1].probability || 0)) * 10000) / 100;
-        return {
-          type: 'compare',
-          a: { probability: meta[0].probability, risk_label: meta[0].risk_label, model_name: meta[0].model_name || meta[0].name || null },
-          b: { probability: meta[1].probability, risk_label: meta[1].risk_label, model_name: meta[1].model_name || meta[1].name || null },
-          score_diff_pp: diff,
-        };
-      }
-    }
-
-    if (Array.isArray(probs) && probs.length > 0) {
-      return {
-        type: 'single',
-        probability: probs[0],
-        risk_label: Array.isArray(risks) ? risks[0] : (risks ?? null),
-        model_name: meta[0]?.name || meta[0]?.model_name || exp.ml_model_name || null,
-      };
-    }
-  };
-
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     if (name === 'sk_id_curr') {
       setClientFeatures(null);
-      setNumericOverrides({});
-      setCategoricalOverrides({});
-      setAssessmentMode('auto');
+      resetOverrides();
     }
   };
 
@@ -122,24 +259,21 @@ export default function Dashboard() {
           model_id_a: selectedModelId,
           model_id_b: selectedModelIdB,
         });
+        setSelectedExperiment(normalizeCompareResult(response.data, formData.sk_id_curr));
       } else {
-        const payload = {
+        response = await experimentsAPI.create({
           sk_id_curr: Number(formData.sk_id_curr),
           currency: assessmentMode === 'manual' ? currency : 'RUB',
           overrides: assessmentMode === 'manual' ? numericOverrides : {},
           categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
           model_id: selectedModelId,
-        };
-        response = await experimentsAPI.create(payload);
+        });
+        setSelectedExperiment(response.data);
       }
-      setResult(response.data);
-      setShowModal(true);
       setFormData({ sk_id_curr: '' });
       setCurrency('RUB');
       setClientFeatures(null);
-      setNumericOverrides({});
-      setCategoricalOverrides({});
-      setAssessmentMode('auto');
+      resetOverrides();
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create assessment');
     } finally {
@@ -181,9 +315,7 @@ export default function Dashboard() {
 
   const handleClientSelected = (sk_id_curr) => {
     setFormData({ sk_id_curr: String(sk_id_curr) });
-    setNumericOverrides({});
-    setCategoricalOverrides({});
-    setAssessmentMode('auto');
+    resetOverrides();
     setCurrency('RUB');
     setClientFeatures(null);
     setActiveTab('new-assessment');
@@ -203,16 +335,6 @@ export default function Dashboard() {
       setFeaturesError('Could not reload client features for the selected currency.');
     } finally {
       setFeaturesLoading(false);
-    }
-  };
-
-  const getRiskColor = (risk) => {
-    if (!risk) return 'text-muted';
-    switch (risk.toLowerCase()) {
-      case 'low': return 'bg-success-bg text-success';
-      case 'medium': return 'bg-warning-bg text-warning';
-      case 'high': return 'bg-error-bg text-error';
-      default: return 'text-muted';
     }
   };
 
@@ -332,11 +454,7 @@ export default function Dashboard() {
                     onChange={e => setSelectedModelId(Number(e.target.value))}
                     disabled={loading}
                   >
-                    {models.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.model_type})
-                      </option>
-                    ))}
+                    <ModelOptions models={models} />
                   </select>
                   {selectedModelId && (() => {
                     const m = models.find(x => x.id === selectedModelId);
@@ -373,11 +491,7 @@ export default function Dashboard() {
                         onChange={e => setSelectedModelIdB(Number(e.target.value))}
                         disabled={loading}
                       >
-                        {models.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.model_type})
-                          </option>
-                        ))}
+                        <ModelOptions models={models} />
                       </select>
                     </div>
                   )}
@@ -437,7 +551,7 @@ export default function Dashboard() {
                       ))}
                       <p className="text-xs text-muted pt-1">
                         Diff: <span className={`font-semibold ${display.score_diff_pp < 5 ? 'text-success' : display.score_diff_pp < 15 ? 'text-warning' : 'text-error'}`}>
-                          {display.score_diff_pp} pp
+                          {display.score_diff_pp} %
                         </span>
                       </p>
                     </div>
@@ -488,186 +602,8 @@ export default function Dashboard() {
         <ClientSelector onClientSelected={handleClientSelected} />
       )}
 
-      {/* History Experiment Modal */}
-      {selectedExperiment && (() => {
-        const exp = selectedExperiment;
-        const display = getExperimentDisplay(exp);
-        return (
-          <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedExperiment(null)}>
-            {display.type === 'compare' ? (
-              <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <h2 className="text-xl font-bold mb-2 text-main text-center">Model Comparison</h2>
-                <p className="text-sm text-muted mb-6 text-center">
-                  Client ID: <strong>{exp.sk_id_curr}</strong>
-                  {' · '}
-                  {new Date(exp.created_at).toLocaleDateString('ru-RU')}
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[display.a, display.b].map((model, idx) => {
-                    const shapData = (Array.isArray(exp.shap_values) ? exp.shap_values[idx] : null) ?? null;
-                    return (
-                      <div key={idx} className="bg-card border border-border rounded-md p-6">
-                        <p className="text-base font-semibold text-main">{model.model_name}</p>
-                        <p className="text-3xl font-bold text-main mt-3">
-                          {(model.probability * 100).toFixed(1)}%
-                        </p>
-                        <span className={`inline-block mt-2 px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(model.risk_label)}`}>
-                          {model.risk_label}
-                        </span>
-                        <div className="mt-4">
-                          <ShapWaterfallChart shapValues={shapData} loading={false} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="text-center mt-4">
-                  <p className="text-sm text-muted">Score difference</p>
-                  <p className={`text-2xl font-bold mt-1 ${
-                    display.score_diff_pp < 5 ? 'text-success' :
-                    display.score_diff_pp < 15 ? 'text-warning' : 'text-error'
-                  }`}>
-                    {display.score_diff_pp} pp
-                  </p>
-                  <p className="text-xs text-muted mt-1">
-                    {display.score_diff_pp < 5
-                      ? 'Models agree'
-                      : display.score_diff_pp < 15
-                      ? 'Moderate disagreement'
-                      : 'Models significantly disagree'}
-                  </p>
-                </div>
-                <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setSelectedExperiment(null)}>
-                  Close
-                </button>
-              </div>
-            ) : (
-              (() => {
-                const shapData = exp.results?.[0]?.shap_values
-                  ?? (Array.isArray(exp.shap_values) ? exp.shap_values[0] : exp.shap_values)
-                  ?? null;
-                return (
-                  <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${shapData ? 'max-w-2xl' : 'max-w-sm'}`} onClick={e => e.stopPropagation()}>
-                    <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
-                    <p className="text-sm text-muted mb-6">
-                      Client ID: <strong>{exp.sk_id_curr}</strong>
-                      {' · '}
-                      {new Date(exp.created_at).toLocaleDateString('ru-RU')}
-                    </p>
-                    <div className="mb-6">
-                      <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(display.risk_label)}`}>
-                        {display.risk_label} Risk
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted mb-4 leading-relaxed">
-                      Probability Score:{' '}
-                      <span className="text-main font-medium">
-                        {display.probability != null ? `${(display.probability * 100).toFixed(1)}%` : '—'}
-                      </span>
-                    </p>
-                    {display.model_name && (
-                      <p className="text-xs text-muted mb-4">
-                        Model:{' '}
-                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                          {display.model_name}
-                        </span>
-                      </p>
-                    )}
-                    <ShapWaterfallChart shapValues={shapData} loading={false} />
-                    <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setSelectedExperiment(null)}>
-                      Close
-                    </button>
-                  </div>
-                );
-              })()
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Result Modal */}
-      {showModal && result && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          {result.model_a ? (
-            // Comparison result
-            <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-2 text-main text-center">Model Comparison</h2>
-              <p className="text-sm text-muted mb-6 text-center">For <strong>{user?.first_name || 'User'}</strong></p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[result.model_a, result.model_b].map((model, idx) => (
-                  <div key={idx} className="bg-card border border-border rounded-md p-6">
-                    <p className="text-base font-semibold text-main">{model.name}</p>
-                    <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                      {model.model_type}
-                    </span>
-                    <p className="text-3xl font-bold text-main mt-3">
-                      {(model.probability * 100).toFixed(1)}%
-                    </p>
-                    <span className={`inline-block mt-2 px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(model.risk_label)}`}>
-                      {model.risk_label}
-                    </span>
-                    <p className="text-xs text-muted mt-2">{model.latency_ms} ms</p>
-                    <ShapWaterfallChart shapValues={model.shap_values} loading={false} />
-                  </div>
-                ))}
-              </div>
-              <div className="text-center mt-4">
-                <p className="text-sm text-muted">Score difference</p>
-                <p className={`text-2xl font-bold mt-1 ${
-                  result.score_diff_pp < 5 ? 'text-success' :
-                  result.score_diff_pp < 15 ? 'text-warning' : 'text-error'
-                }`}>
-                  {result.score_diff_pp} pp
-                </p>
-                <p className="text-xs text-muted mt-1">
-                  {result.score_diff_pp < 5
-                    ? 'Models agree'
-                    : result.score_diff_pp < 15
-                    ? 'Moderate disagreement'
-                    : 'Models significantly disagree'}
-                </p>
-              </div>
-              <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
-                Close
-              </button>
-            </div>
-          ) : (
-            // Single assessment result
-            (() => {
-              const prob = Array.isArray(result.probability) ? result.probability[0] : result.probability;
-              const risk = Array.isArray(result.risk_label) ? result.risk_label[0] : result.risk_label;
-              const shap = Array.isArray(result.shap_values) ? result.shap_values[0] : result.shap_values;
-              const modelName = result.ml_model_name || result.results?.[0]?.name || null;
-              return (
-            <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${shap ? 'max-w-2xl' : 'max-w-sm'}`}>
-              <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
-              <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
-              <div className="mb-6">
-                <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(risk)}`}>
-                  {risk} Risk
-                </span>
-              </div>
-              <p className="text-sm text-muted mb-4 leading-relaxed">
-                Probability Score: <span className="text-main font-medium">{(Number(prob) * 100).toFixed(1)}%</span><br/>
-                Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
-              </p>
-              {modelName && (
-                <p className="text-xs text-muted mb-4">
-                  Model:{' '}
-                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                    {modelName}
-                  </span>
-                </p>
-              )}
-              <ShapWaterfallChart shapValues={shap} loading={false} />
-              <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
-                Close
-              </button>
-            </div>
-              );
-            })()
-          )}
-        </div>
+      {selectedExperiment && (
+        <ExperimentResultModal exp={selectedExperiment} onClose={() => setSelectedExperiment(null)} />
       )}
 
       {/* Delete Modal */}
