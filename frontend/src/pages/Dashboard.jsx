@@ -59,18 +59,54 @@ export default function Dashboard() {
     }
   };
 
-  // Returns display-ready data for an experiment regardless of type or age.
-  // Old records (results=null) fall back to top-level fields.
+  // Returns display-ready data regardless of experiment type or record age.
+  // New format: probability/risk_label are JSON arrays in dedicated columns.
+  // Old compare format: both models' full data stored inside results[].
   const getExperimentDisplay = (exp) => {
-    if (exp.experiment_type === 'compare' && Array.isArray(exp.results) && exp.results.length >= 2) {
-      return { type: 'compare', a: exp.results[0], b: exp.results[1], score_diff_pp: exp.results[0].score_diff_pp };
+    const probs = exp.probability;
+    const risks = exp.risk_label;
+    const meta = exp.results || [];
+
+    if (exp.experiment_type === 'compare') {
+      // New format: probability column has 2 elements
+      if (Array.isArray(probs) && probs.length >= 2) {
+        const diff = Math.round(Math.abs(probs[0] - probs[1]) * 10000) / 100;
+        return {
+          type: 'compare',
+          a: { probability: probs[0], risk_label: Array.isArray(risks) ? risks[0] : null, model_name: meta[0]?.name || meta[0]?.model_name || null },
+          b: { probability: probs[1], risk_label: Array.isArray(risks) ? risks[1] : null, model_name: meta[1]?.name || meta[1]?.model_name || null },
+          score_diff_pp: diff,
+        };
+      }
+      // Old compare format: full model data lives inside results[]
+      if (meta.length >= 2 && meta[0].probability != null) {
+        const diff = Math.round(Math.abs((meta[0].probability || 0) - (meta[1].probability || 0)) * 10000) / 100;
+        return {
+          type: 'compare',
+          a: { probability: meta[0].probability, risk_label: meta[0].risk_label, model_name: meta[0].model_name || meta[0].name || null },
+          b: { probability: meta[1].probability, risk_label: meta[1].risk_label, model_name: meta[1].model_name || meta[1].name || null },
+          score_diff_pp: diff,
+        };
+      }
     }
-    if (Array.isArray(exp.results) && exp.results.length > 0) {
-      const r = exp.results[0];
-      return { type: 'single', risk_label: r.risk_label, probability: r.probability, model_name: r.model_name };
+
+    // Single — new format (probability is array)
+    if (Array.isArray(probs) && probs.length > 0) {
+      return {
+        type: 'single',
+        probability: probs[0],
+        risk_label: Array.isArray(risks) ? risks[0] : (risks ?? null),
+        model_name: meta[0]?.name || meta[0]?.model_name || exp.ml_model_name || null,
+      };
     }
-    // fallback for old records
-    return { type: 'single', risk_label: exp.risk_label, probability: exp.probability, model_name: exp.ml_model_name };
+
+    // Ultimate fallback: very old records before any JSON migration
+    return {
+      type: 'single',
+      probability: typeof probs === 'number' ? probs : null,
+      risk_label: typeof risks === 'string' ? risks : null,
+      model_name: exp.ml_model_name || null,
+    };
   };
 
   const handleFormChange = (e) => {
@@ -505,31 +541,39 @@ export default function Dashboard() {
             </div>
           ) : (
             // Single assessment result
-            <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${result.shap_values ? 'max-w-2xl' : 'max-w-sm'}`}>
+            (() => {
+              const prob = Array.isArray(result.probability) ? result.probability[0] : result.probability;
+              const risk = Array.isArray(result.risk_label) ? result.risk_label[0] : result.risk_label;
+              const shap = Array.isArray(result.shap_values) ? result.shap_values[0] : result.shap_values;
+              const modelName = result.ml_model_name || result.results?.[0]?.name || null;
+              return (
+            <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${shap ? 'max-w-2xl' : 'max-w-sm'}`}>
               <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
               <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
               <div className="mb-6">
-                <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(result.risk_label)}`}>
-                  {result.risk_label} Risk
+                <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(risk)}`}>
+                  {risk} Risk
                 </span>
               </div>
               <p className="text-sm text-muted mb-4 leading-relaxed">
-                Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
+                Probability Score: <span className="text-main font-medium">{(Number(prob) * 100).toFixed(1)}%</span><br/>
                 Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
               </p>
-              {result.ml_model_name && (
+              {modelName && (
                 <p className="text-xs text-muted mb-4">
                   Model:{' '}
                   <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                    {result.ml_model_name}
+                    {modelName}
                   </span>
                 </p>
               )}
-              <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
+              <ShapWaterfallChart shapValues={shap} loading={false} />
               <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
                 Close
               </button>
             </div>
+              );
+            })()
           )}
         </div>
       )}

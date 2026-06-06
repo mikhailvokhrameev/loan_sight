@@ -115,28 +115,23 @@ class ExperimentViewSet(viewsets.ModelViewSet):
             if save_credit is None:
                 save_credit = float(client_data.get('AMT_CREDIT') or 0)
 
-        single_result = [{
-            'model_id': model_id,
-            'model_name': ml_model_obj.name,
-            'model_type': ml_model_obj.model_type,
-            'probability': probability,
-            'risk_label': risk_label,
-            'latency_ms': None,
-            'shap_values': shap_data,
-        }]
-
         serializer.save(
             user=user,
             amt_income=save_income,
             amt_credit=save_credit,
             currency=currency,
-            probability=probability,
-            risk_label=risk_label,
+            probability=[probability],
+            risk_label=[risk_label],
             sk_id_curr=sk_id_curr,
-            shap_values=shap_data,
+            shap_values=[shap_data] if shap_data is not None else None,
             ml_model=ml_model_obj,
             experiment_type='single',
-            results=single_result,
+            results=[{
+                'id': ml_model_obj.id,
+                'name': ml_model_obj.name,
+                'model_type': ml_model_obj.model_type,
+                'latency_ms': None,
+            }],
         )
 
 
@@ -431,8 +426,24 @@ class CompareModelsView(APIView):
         score_diff = round(abs(result_a['probability'] - result_b['probability']) * 100, 2)
 
         compare_results = [
-            {**result_a, 'score_diff_pp': score_diff},
-            {**result_b, 'score_diff_pp': score_diff},
+            {
+                'model_id': result_a['model_id'],
+                'model_name': result_a['model_name'],
+                'model_type': result_a['model_type'],
+                'probability': result_a['probability'],
+                'risk_label': result_a['risk_label'],
+                'latency_ms': result_a['latency_ms'],
+                'shap_values': result_a['shap_values'],
+            },
+            {
+                'model_id': result_b['model_id'],
+                'model_name': result_b['model_name'],
+                'model_type': result_b['model_type'],
+                'probability': result_b['probability'],
+                'risk_label': result_b['risk_label'],
+                'latency_ms': result_b['latency_ms'],
+                'shap_values': result_b['shap_values'],
+            },
         ]
 
         client_data = get_client_features_dict(int(sk_id_curr)) or {}
@@ -442,11 +453,18 @@ class CompareModelsView(APIView):
         Experiment.objects.create(
             user=request.user,
             sk_id_curr=int(sk_id_curr),
+            experiment_type='compare',
             amt_income=save_income,
             amt_credit=save_credit,
             currency=currency,
-            experiment_type='compare',
-            results=compare_results,
+            probability=[result_a['probability'], result_b['probability']],
+            risk_label=[result_a['risk_label'], result_b['risk_label']],
+            shap_values=[result_a['shap_values'], result_b['shap_values']],
+            ml_model=None,
+            results=[
+                {'id': result_a['model_id'], 'name': result_a['model_name'], 'model_type': result_a['model_type'], 'latency_ms': result_a['latency_ms']},
+                {'id': result_b['model_id'], 'name': result_b['model_name'], 'model_type': result_b['model_type'], 'latency_ms': result_b['latency_ms']},
+            ],
         )
 
         return Response({
