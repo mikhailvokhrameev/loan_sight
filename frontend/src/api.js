@@ -127,8 +127,8 @@ export const clientsAPI = {
   search: (params) =>
     api.get('/clients/search/', { params }),
 
-  getFeatures: (skIdCurr) =>
-    api.get(`/clients/features/${skIdCurr}/`),
+  getFeatures: (skIdCurr, currency = 'RUB') =>
+    api.get(`/clients/features/${skIdCurr}/`, { params: { currency } }),
 };
 
 export default api;

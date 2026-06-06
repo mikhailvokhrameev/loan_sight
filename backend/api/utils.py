@@ -48,6 +48,8 @@ LABEL_MAPPINGS_INVERSE = {
     for feature, mapping in LABEL_MAPPINGS.items()
 }
 
+MONETARY_FIELDS = {'AMT_INCOME_TOTAL', 'AMT_CREDIT', 'AMT_ANNUITY', 'AMT_GOODS_PRICE'}
+
 # Lazy loading mechanism: the model is loaded into the server's RAM only once
 _model = None
 
@@ -147,10 +149,10 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides
     """
     Shared helper: converts currency, fetches client data, applies overrides,
     and returns (feature_names, X_arr) ready for model inference.
+    amt_income / amt_credit may be None — in that case the DB values are used as-is.
+    Monetary overrides are converted from currency to RUB using the exchange rate.
     """
     rate = get_currency_rate(currency, base_currency='RUB')
-    amt_income_base = float(amt_income) * rate
-    amt_credit_base = float(amt_credit) * rate
 
     model = get_model()
     feature_names = model.feature_name()
@@ -162,24 +164,33 @@ def _build_feature_array(sk_id_curr, amt_income, amt_credit, currency, overrides
     else:
         return None, None, "Client ID not provided"
 
-    original_credit = max(float(feature_dict.get('AMT_CREDIT', 500000.0)), 1.0)
-    original_annuity = float(feature_dict.get('AMT_ANNUITY', 25000.0))
-    original_goods_price = float(feature_dict.get('AMT_GOODS_PRICE', original_credit))
+    # Apply form-level income / credit only when explicitly provided
+    if amt_income is not None:
+        feature_dict['AMT_INCOME_TOTAL'] = float(amt_income) * rate
 
-    annuity_ratio = original_annuity / original_credit
-    goods_ratio = original_goods_price / original_credit
+    if amt_credit is not None:
+        amt_credit_base = float(amt_credit) * rate
+        original_credit = max(float(feature_dict.get('AMT_CREDIT', 500000.0)), 1.0)
+        original_annuity = float(feature_dict.get('AMT_ANNUITY', 25000.0))
+        original_goods_price = float(feature_dict.get('AMT_GOODS_PRICE', original_credit))
+        annuity_ratio = original_annuity / original_credit
+        goods_ratio = original_goods_price / original_credit
+        feature_dict['AMT_CREDIT'] = amt_credit_base
+        feature_dict['AMT_ANNUITY'] = amt_credit_base * annuity_ratio
+        feature_dict['AMT_GOODS_PRICE'] = amt_credit_base * goods_ratio
 
-    feature_dict['AMT_INCOME_TOTAL'] = amt_income_base
-    feature_dict['AMT_CREDIT'] = amt_credit_base
-    feature_dict['AMT_ANNUITY'] = amt_credit_base * annuity_ratio
-    feature_dict['AMT_GOODS_PRICE'] = amt_credit_base * goods_ratio
-
+    # Monetary overrides arrive in the selected currency → convert to RUB
     if overrides:
-        for raw_feature_name, new_value in overrides.items():
-            feature_dict[raw_feature_name] = new_value
+        for key, value in overrides.items():
+            if value is None:
+                continue
+            if key in MONETARY_FIELDS:
+                feature_dict[key] = float(value) * rate
+            else:
+                feature_dict[key] = float(value)
 
-    safe_income  = max(feature_dict.get('AMT_INCOME_TOTAL', amt_income_base) or amt_income_base, 1.0)
-    safe_credit  = max(feature_dict.get('AMT_CREDIT', amt_credit_base) or amt_credit_base, 1.0)
+    safe_income  = max(feature_dict.get('AMT_INCOME_TOTAL', 1.0) or 1.0, 1.0)
+    safe_credit  = max(feature_dict.get('AMT_CREDIT', 1.0) or 1.0, 1.0)
     safe_annuity = max(feature_dict.get('AMT_ANNUITY', 1.0) or 1.0, 1.0)
     safe_goods   = max(feature_dict.get('AMT_GOODS_PRICE', safe_credit) or safe_credit, 1.0)
     days_birth   = feature_dict.get('DAYS_BIRTH', -1.0) or -1.0

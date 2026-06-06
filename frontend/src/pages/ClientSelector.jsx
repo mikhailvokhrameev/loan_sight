@@ -139,7 +139,7 @@ export default function ClientSelector({ onClientSelected }) {
           <button
             onClick={handleSearch}
             disabled={searchLoading}
-            className="w-full py-3 text-base font-medium rounded-sm bg-primary text-white dark:text-[#05070b] hover:bg-primary-hover transition-all disabled:opacity-60"
+            className="w-full py-3 text-base font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover transition-all disabled:opacity-60"
           >
             {searchLoading ? 'Searching...' : 'Find Clients'}
           </button>

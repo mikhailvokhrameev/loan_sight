@@ -49,7 +49,7 @@ export default function Login() {
             <label className="block text-sm font-medium mb-2 text-main">Password</label>
             <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" required />
           </div>
-          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white dark:text-[#05070b] font-bold rounded-sm hover:bg-primary-hover transition-all disabled:opacity-60">
+          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-sm hover:bg-primary-hover transition-all disabled:opacity-60">
             {loading ? 'Logging in...' : 'Sign In'}
           </button>
         </form>

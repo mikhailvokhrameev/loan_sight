@@ -1,5 +1,6 @@
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  darkMode: ['selector', '.dark-theme'],
   theme: {
     extend: {
       colors: {
@@ -10,7 +11,9 @@ export default {
         primary: {
           DEFAULT: "var(--primary)",
           hover: "var(--primary-hover)",
+          foreground: "var(--primary-foreground)",
         },
+        'hover-bg': "var(--hover-bg)",
         main: "var(--text-main)",
         muted: "var(--text-muted)",
         error: {

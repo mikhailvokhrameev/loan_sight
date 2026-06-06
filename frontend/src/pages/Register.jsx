@@ -48,7 +48,7 @@ export default function Register() {
             <label className="block text-sm font-medium mb-2 text-main">Confirm Password</label>
             <input type="password" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" onChange={e => setFormData({...formData, password2: e.target.value})} required />
           </div>
-          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white dark:text-[#05070b] font-bold rounded-sm hover:bg-primary-hover transition-all">
+          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-sm hover:bg-primary-hover transition-all">
             {loading ? 'Creating Account...' : 'Register'}
           </button>
         </form>

@@ -27,11 +27,15 @@
 }
 
 .btn-primary {
-  @apply bg-primary text-white hover:bg-primary-hover;
+  @apply bg-primary hover:bg-primary-hover;
+  color: var(--primary-foreground);
 }
 
 .btn-secondary {
-  @apply bg-transparent border-border text-main hover:bg-gray-100 dark:hover:bg-[#161a20];
+  @apply bg-transparent border-border text-main;
+}
+.btn-secondary:hover {
+  background-color: var(--hover-bg);
 }
 
 .btn-danger {
@@ -66,7 +70,8 @@
 .alert-success { @apply bg-success-bg text-success border-emerald-300; }
 
 .avatar-button {
-  @apply w-9 h-9 rounded-full bg-gray-100 dark:bg-[#161a20] border border-border text-main text-sm font-semibold flex items-center justify-center cursor-pointer transition-colors duration-300;
+  @apply w-9 h-9 rounded-full border border-border text-main text-sm font-semibold flex items-center justify-center cursor-pointer transition-colors duration-300;
+  background-color: var(--hover-bg);
 }
 
 .badge {

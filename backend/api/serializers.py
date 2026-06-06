@@ -35,6 +35,12 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
         return user
 
 class ApplicationSerializer(serializers.ModelSerializer): # Loan application serializer
+    amt_income = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False, allow_null=True, default=None
+    )
+    amt_credit = serializers.DecimalField(
+        max_digits=15, decimal_places=2, required=False, allow_null=True, default=None
+    )
     overrides = serializers.DictField(
         child=serializers.FloatField(allow_null=True),
         required=False,
@@ -52,3 +58,8 @@ class ApplicationSerializer(serializers.ModelSerializer): # Loan application ser
         model = Application
         fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at', 'overrides', 'categorical_overrides']
         read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at']
+
+    def create(self, validated_data):
+        validated_data.pop('overrides', None)
+        validated_data.pop('categorical_overrides', None)
+        return super().create(validated_data)

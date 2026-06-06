@@ -39,7 +39,7 @@ export default function Navbar({ theme, toggleTheme }) {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="w-9 h-9 rounded-full bg-gray-100 dark:bg-[#161a20] border border-border text-main text-lg font-semibold flex items-center justify-center cursor-pointer transition-colors duration-300"
+                className="w-9 h-9 rounded-full bg-hover-bg border border-border text-main text-lg font-semibold flex items-center justify-center cursor-pointer transition-colors duration-300"
                 title={user?.email}
               >
                 🗿
@@ -54,7 +54,7 @@ export default function Navbar({ theme, toggleTheme }) {
                   
                   <Link
                     to="/profile"
-                    className="flex items-center gap-2 px-4 py-2 text-sm text-main hover:bg-gray-100 dark:hover:bg-[#161a20] transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-main hover:bg-hover-bg transition-colors"
                     onClick={() => setShowDropdown(false)}
                   >
                     <UserIcon /> Profile
@@ -62,7 +62,7 @@ export default function Navbar({ theme, toggleTheme }) {
 
                   <button
                     onClick={toggleTheme}
-                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-main hover:bg-gray-100 dark:hover:bg-[#161a20] transition-colors"
+                    className="w-full flex items-center gap-2 px-4 py-2 text-sm text-main hover:bg-hover-bg transition-colors"
                   >
                     {theme === 'light' ? <><MoonIcon /> Dark Mode</> : <><SunIcon /> Light Mode</>}
                   </button>
@@ -81,10 +81,10 @@ export default function Navbar({ theme, toggleTheme }) {
           </>
         ) : (
           <div className="flex gap-3">
-            <Link to="/login" className="px-4 py-2 text-sm font-medium border border-border rounded-sm text-main bg-transparent hover:bg-gray-100 dark:hover:bg-[#161a20] transition-all">
+            <Link to="/login" className="px-4 py-2 text-sm font-medium border border-border rounded-sm text-main bg-transparent hover:bg-hover-bg transition-all">
               Log in
             </Link>
-            <Link to="/register" className="px-4 py-2 text-sm font-medium bg-primary text-white dark:text-[#05070b] hover:bg-primary-hover rounded-sm transition-all">
+            <Link to="/register" className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary-hover rounded-sm transition-all">
               Register
             </Link>
           </div>

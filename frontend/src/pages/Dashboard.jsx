@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { applicationsAPI } from '../api';
+import { applicationsAPI, clientsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
 import ClientSelector from './ClientSelector';
+import FeatureOverridePanel from '../components/FeatureOverridePanel';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('new-assessment');
@@ -16,10 +17,16 @@ export default function Dashboard() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const { user } = useAuth();
 
-  const [formData, setFormData] = useState({
-    sk_id_curr: '', amt_income: '', amt_credit: '', currency: 'RUB',
-  });
+  const [formData, setFormData] = useState({ sk_id_curr: '' });
+  const [currency, setCurrency] = useState('RUB');
   const [result, setResult] = useState(null);
+
+  const [clientFeatures, setClientFeatures] = useState(null);
+  const [numericOverrides, setNumericOverrides] = useState({});
+  const [categoricalOverrides, setCategoricalOverrides] = useState({});
+  const [assessmentMode, setAssessmentMode] = useState('auto');
+  const [featuresLoading, setFeaturesLoading] = useState(false);
+  const [featuresError, setFeaturesError] = useState('');
 
   useEffect(() => {
     if (activeTab === 'history') loadApplications();
@@ -42,6 +49,12 @@ export default function Dashboard() {
   const handleFormChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'sk_id_curr') {
+      setClientFeatures(null);
+      setNumericOverrides({});
+      setCategoricalOverrides({});
+      setAssessmentMode('auto');
+    }
   };
 
   const handleSubmitAssessment = async (e) => {
@@ -49,15 +62,21 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const response = await applicationsAPI.create({
+      const payload = {
         sk_id_curr: Number(formData.sk_id_curr),
-        amt_income: Number(formData.amt_income),
-        amt_credit: Number(formData.amt_credit),
-        currency: formData.currency,
-      });
+        currency: assessmentMode === 'manual' ? currency : 'RUB',
+        overrides: assessmentMode === 'manual' ? numericOverrides : {},
+        categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
+      };
+      const response = await applicationsAPI.create(payload);
       setResult(response.data);
       setShowModal(true);
-      setFormData({ sk_id_curr: '', amt_income: '', amt_credit: '', currency: 'RUB' });
+      setFormData({ sk_id_curr: '' });
+      setCurrency('RUB');
+      setClientFeatures(null);
+      setNumericOverrides({});
+      setCategoricalOverrides({});
+      setAssessmentMode('auto');
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to create assessment');
     } finally {
@@ -75,9 +94,53 @@ export default function Dashboard() {
     }
   };
 
-  const handleClientSelected = (sk_id_curr, _features) => {
-    setFormData(prev => ({ ...prev, sk_id_curr: String(sk_id_curr) }));
+  useEffect(() => {
+    if (!formData.sk_id_curr) {
+      setClientFeatures(null);
+      setFeaturesError('');
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setFeaturesLoading(true);
+      setFeaturesError('');
+      try {
+        const res = await clientsAPI.getFeatures(Number(formData.sk_id_curr), currency);
+        setClientFeatures(res.data);
+      } catch {
+        setFeaturesError('Client not found or could not load features.');
+        setClientFeatures(null);
+      } finally {
+        setFeaturesLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [formData.sk_id_curr]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleClientSelected = (sk_id_curr) => {
+    setFormData({ sk_id_curr: String(sk_id_curr) });
+    setNumericOverrides({});
+    setCategoricalOverrides({});
+    setAssessmentMode('auto');
+    setCurrency('RUB');
+    setClientFeatures(null);
     setActiveTab('new-assessment');
+  };
+
+  const handleCurrencyChange = async (newCurrency) => {
+    setCurrency(newCurrency);
+    setNumericOverrides({});
+    setCategoricalOverrides({});
+    if (!formData.sk_id_curr) return;
+    setFeaturesLoading(true);
+    setFeaturesError('');
+    try {
+      const res = await clientsAPI.getFeatures(Number(formData.sk_id_curr), newCurrency);
+      setClientFeatures(res.data);
+    } catch {
+      setFeaturesError('Could not reload client features for the selected currency.');
+    } finally {
+      setFeaturesLoading(false);
+    }
   };
 
   const getRiskColor = (risk) => {
@@ -99,8 +162,8 @@ export default function Dashboard() {
       <div className="flex gap-6 border-b border-border mb-8">
         {[
           { id: 'new-assessment', label: 'New Assessment', icon: <PlusCircleIcon /> },
+           { id: 'select-client', label: 'Select Client', icon: <UserIcon /> },
           { id: 'history', label: 'Request History', icon: <HistoryIcon /> },
-          { id: 'select-client', label: 'Select Client', icon: <UserIcon /> },
         ].map(({ id, label, icon }) => (
           <button
             key={id}
@@ -116,28 +179,86 @@ export default function Dashboard() {
 
       {activeTab === 'new-assessment' && (
         <div className="flex justify-center mt-4">
-          <div className="bg-card border border-border rounded-md p-8 shadow-md w-full max-w-md">
+          <div className={`bg-card border border-border rounded-md p-8 shadow-md w-full transition-all ${assessmentMode === 'manual' && clientFeatures ? 'max-w-2xl' : 'max-w-md'}`}>
             <h2 className="text-xl mb-8 font-semibold text-center text-main">New Credit Risk Assessment</h2>
             <form onSubmit={handleSubmitAssessment}>
               <div className="mb-5">
                 <label className="block text-sm font-medium mb-2 text-main">Client ID</label>
                 <input type="number" name="sk_id_curr" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100002" disabled={loading} />
               </div>
-              <div className="mb-5">
-                <label className="block text-sm font-medium mb-2 text-main">Currency</label>
-                <select name="currency" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.currency} onChange={handleFormChange} disabled={loading}>
-                  {['RUB', 'USD', 'EUR', 'GBP', 'KZT', 'BYN'].map(curr => <option key={curr} value={curr}>{curr}</option>)}
-                </select>
-              </div>
-              <div className="mb-5">
-                <label className="block text-sm font-medium mb-2 text-main">Monthly Income ({formData.currency})</label>
-                <input type="number" name="amt_income" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.amt_income} onChange={handleFormChange} required step="0.01" disabled={loading} />
-              </div>
-              <div className="mb-8">
-                <label className="block text-sm font-medium mb-2 text-main">Desired Loan Amount ({formData.currency})</label>
-                <input type="number" name="amt_credit" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.amt_credit} onChange={handleFormChange} required step="0.01" disabled={loading} />
-              </div>
-              <button type="submit" className="w-full py-3 text-base font-medium rounded-sm bg-primary text-white dark:text-[#05070b] hover:bg-primary-hover transition-all disabled:opacity-60" disabled={loading}>
+
+              {formData.sk_id_curr && (
+                <>
+                  {featuresLoading && (
+                    <div className="mb-5 text-xs text-muted text-center py-2">
+                      Loading client data...
+                    </div>
+                  )}
+
+                  {featuresError && (
+                    <div className="mb-5 text-xs text-error">{featuresError}</div>
+                  )}
+
+                  {clientFeatures && !featuresLoading && (
+                    <div className="mb-6">
+                      <div className="flex gap-3 mb-5">
+                        {[
+                          { id: 'auto', label: 'Auto' },
+                          { id: 'manual', label: 'Manual Override' },
+                        ].map(({ id, icon, label }) => (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() => setAssessmentMode(id)}
+                            className={`flex-1 py-2 px-3 rounded-sm text-sm font-medium border transition-all ${
+                              assessmentMode === id
+                                ? 'border-primary bg-primary text-primary-foreground'
+                                : 'border-border text-muted hover:text-main'
+                            }`}
+                          >
+                            {icon} {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {assessmentMode === 'auto' && (
+                        <p className="text-xs text-muted text-center py-2">
+                          All client data will be used as stored in the database.
+                        </p>
+                      )}
+
+                      {assessmentMode === 'manual' && (
+                        <>
+                          <div className="mb-5">
+                            <label className="block text-sm font-medium mb-2 text-main">Currency</label>
+                            <select
+                              className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                              value={currency}
+                              onChange={e => handleCurrencyChange(e.target.value)}
+                              disabled={featuresLoading || loading}
+                            >
+                              {['RUB', 'USD', 'EUR', 'GBP', 'KZT', 'BYN'].map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <FeatureOverridePanel
+                            features={clientFeatures}
+                            currency={currency}
+                            onChange={(numDelta, catDelta) => {
+                              setNumericOverrides(numDelta);
+                              setCategoricalOverrides(catDelta);
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                </>
+              )}
+
+              <button type="submit" className="w-full py-3 text-base font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover transition-all disabled:opacity-60" disabled={loading}>
                 {loading ? 'Processing...' : 'Get Assessment'}
               </button>
             </form>
@@ -151,7 +272,7 @@ export default function Dashboard() {
             <div key={app.id} className="bg-card border border-border rounded-md p-6 shadow-sm">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-xs font-medium text-muted">Request #{applications.length - index}</span>
-                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getRiskColor(app.risk_label)}`}>
+                <span className={`px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(app.risk_label)}`}>
                   {app.risk_label}
                 </span>
               </div>
@@ -194,7 +315,7 @@ export default function Dashboard() {
               Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
             </p>
             <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
-            <button className="w-full mt-6 py-2 bg-primary text-white dark:text-[#05070b] font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
+            <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
               Close
             </button>
           </div>
@@ -208,7 +329,7 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-main mb-2">Are you sure?</h2>
             <p className="text-sm text-muted mb-6">This assessment history will be permanently removed.</p>
             <div className="flex gap-3">
-              <button className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-gray-100 dark:hover:bg-[#161a20] rounded-sm transition-all" onClick={() => setShowDeleteModal(false)}>Cancel</button>
+              <button className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-hover-bg rounded-sm transition-all" onClick={() => setShowDeleteModal(false)}>Cancel</button>
               <button className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all" onClick={confirmDeleteApplication}>Delete</button>
             </div>
           </div>

@@ -8,7 +8,11 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
 from .models import Application, ClientFeature, RAW_FEATURES
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
-from .utils import predict_credit_risk, get_shap_values, LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE
+from .utils import (
+    predict_credit_risk, get_shap_values,
+    LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE,
+    get_client_features_dict, get_currency_rate, MONETARY_FIELDS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +106,22 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
 
-        # Save the application object into DB with calculated ML parameters and the owner
+        # Resolve amt_income / amt_credit for Application model storage.
+        # If not provided by the form, fall back to the client's DB values (in RUB).
+        save_income = amt_income
+        save_credit = amt_credit
+        if save_income is None or save_credit is None:
+            client_data = get_client_features_dict(sk_id_curr) or {}
+            if save_income is None:
+                save_income = float(client_data.get('AMT_INCOME_TOTAL') or 0)
+            if save_credit is None:
+                save_credit = float(client_data.get('AMT_CREDIT') or 0)
+
         serializer.save(
             user=user,
+            amt_income=save_income,
+            amt_credit=save_credit,
+            currency=currency,
             probability=probability,
             risk_label=risk_label,
             sk_id_curr=sk_id_curr,
@@ -271,6 +288,7 @@ class ClientFeaturesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, sk_id_curr):
+        currency = request.query_params.get('currency', 'RUB').upper()
         try:
             client = ClientFeature.objects.get(sk_id_curr=sk_id_curr)
         except ClientFeature.DoesNotExist:
@@ -281,6 +299,15 @@ class ClientFeaturesView(APIView):
             field = feature.lower()
             val = getattr(client, field, None)
             numeric_features[feature] = float(val) if val is not None else None
+
+        # Convert monetary fields from RUB to the requested currency for display.
+        # rate = RUB per 1 unit of currency, so display_value = rub_value / rate.
+        if currency != 'RUB':
+            rate = get_currency_rate(currency, base_currency='RUB')
+            if rate and rate > 0:
+                for key in MONETARY_FIELDS:
+                    if key in numeric_features and numeric_features[key] is not None:
+                        numeric_features[key] = round(numeric_features[key] / rate, 2)
 
         categorical_features = {}
         for feature, inverse in LABEL_MAPPINGS_INVERSE.items():

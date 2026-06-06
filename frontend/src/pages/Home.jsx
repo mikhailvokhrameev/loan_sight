@@ -19,7 +19,7 @@ export default function Home() {
         <Link to="/register" className="px-8 py-3 text-base font-semibold rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover shadow-md transition-all">
           Get Started
         </Link>
-        <Link to="/login" className="px-8 py-3 text-base font-semibold rounded-sm border border-border text-main bg-transparent hover:bg-gray-100 dark:hover:bg-[#161a20] transition-all">
+        <Link to="/login" className="px-8 py-3 text-base font-semibold rounded-sm border border-border text-main bg-transparent hover:bg-hover-bg transition-all">
           Log In
         </Link>
       </div>

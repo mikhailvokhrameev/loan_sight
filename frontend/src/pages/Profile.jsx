@@ -48,7 +48,7 @@ export default function Profile() {
             <label className="block text-sm font-medium mb-2 text-main">Email</label>
             <input
               type="email"
-              className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-gray-50 dark:bg-transparent text-muted cursor-not-allowed outline-none transition-colors"
+              className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-hover-bg text-muted cursor-not-allowed outline-none transition-colors"
               value={email}
               disabled
             />
@@ -65,10 +65,10 @@ export default function Profile() {
           </div>
 
           <div className="flex gap-4">
-            <button type="submit" className="flex-1 py-2 text-sm font-bold bg-primary text-white dark:text-[#05070b] rounded-sm hover:bg-primary-hover transition-all disabled:opacity-50" disabled={saving}>
+            <button type="submit" className="flex-1 py-2 text-sm font-bold bg-primary text-primary-foreground rounded-sm hover:bg-primary-hover transition-all disabled:opacity-50" disabled={saving}>
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
-            <button type="button" className="flex-1 py-2 text-sm font-bold border border-border text-main bg-transparent hover:bg-gray-100 dark:hover:bg-[#161a20] rounded-sm transition-all" onClick={() => navigate('/dashboard')}>
+            <button type="button" className="flex-1 py-2 text-sm font-bold border border-border text-main bg-transparent hover:bg-hover-bg rounded-sm transition-all" onClick={() => navigate('/dashboard')}>
               Back
             </button>
           </div>
