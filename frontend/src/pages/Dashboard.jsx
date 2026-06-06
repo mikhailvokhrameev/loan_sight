@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [result, setResult] = useState(null);
 
   const [clientFeatures, setClientFeatures] = useState(null);
+  const [selectedExperiment, setSelectedExperiment] = useState(null);
   const [numericOverrides, setNumericOverrides] = useState({});
   const [categoricalOverrides, setCategoricalOverrides] = useState({});
   const [assessmentMode, setAssessmentMode] = useState('auto');
@@ -59,16 +60,13 @@ export default function Dashboard() {
     }
   };
 
-  // Returns display-ready data regardless of experiment type or record age.
-  // New format: probability/risk_label are JSON arrays in dedicated columns.
-  // Old compare format: both models' full data stored inside results[].
+  // Returns display-ready data regardless of experiment type or record age
   const getExperimentDisplay = (exp) => {
     const probs = exp.probability;
     const risks = exp.risk_label;
     const meta = exp.results || [];
 
     if (exp.experiment_type === 'compare') {
-      // New format: probability column has 2 elements
       if (Array.isArray(probs) && probs.length >= 2) {
         const diff = Math.round(Math.abs(probs[0] - probs[1]) * 10000) / 100;
         return {
@@ -78,7 +76,6 @@ export default function Dashboard() {
           score_diff_pp: diff,
         };
       }
-      // Old compare format: full model data lives inside results[]
       if (meta.length >= 2 && meta[0].probability != null) {
         const diff = Math.round(Math.abs((meta[0].probability || 0) - (meta[1].probability || 0)) * 10000) / 100;
         return {
@@ -90,7 +87,6 @@ export default function Dashboard() {
       }
     }
 
-    // Single — new format (probability is array)
     if (Array.isArray(probs) && probs.length > 0) {
       return {
         type: 'single',
@@ -99,14 +95,6 @@ export default function Dashboard() {
         model_name: meta[0]?.name || meta[0]?.model_name || exp.ml_model_name || null,
       };
     }
-
-    // Ultimate fallback: very old records before any JSON migration
-    return {
-      type: 'single',
-      probability: typeof probs === 'number' ? probs : null,
-      risk_label: typeof risks === 'string' ? risks : null,
-      model_name: exp.ml_model_name || null,
-    };
   };
 
   const handleFormChange = (e) => {
@@ -238,7 +226,7 @@ export default function Dashboard() {
         {[
           { id: 'new-assessment', label: 'New Assessment', icon: <PlusCircleIcon /> },
            { id: 'select-client', label: 'Select Client', icon: <UserIcon /> },
-          { id: 'history', label: 'Experiments', icon: <HistoryIcon /> },
+          { id: 'history', label: 'Experiments Log', icon: <HistoryIcon /> },
         ].map(({ id, label, icon }) => (
           <button
             key={id}
@@ -424,18 +412,16 @@ export default function Dashboard() {
             {experiments.map((exp, index) => {
               const display = getExperimentDisplay(exp);
               return (
-                <div key={exp.id} className="bg-card border border-border rounded-md p-6 shadow-sm">
+                <div key={exp.id} className="bg-card border border-border rounded-md p-6 shadow-sm flex flex-col cursor-pointer hover:border-primary transition-colors" onClick={() => setSelectedExperiment(exp)}>
                   <div className="flex justify-between items-center mb-4">
-                    <span className="text-xs font-medium text-muted">#{experiments.length - index}</span>
-                    {display.type === 'compare' ? (
+                    <span className="text-xs font-medium text-muted">
+                      #{experiments.length - index}
+                    </span>
+                    <div className="flex items-center gap-2">
                       <span className="px-2 py-1 rounded-full text-[10px] font-bold tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                        COMPARE
+                        {display.type === 'compare' ? 'COMPARE' : 'SINGLE'}
                       </span>
-                    ) : (
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(display.risk_label)}`}>
-                        {display.risk_label}
-                      </span>
-                    )}
+                    </div>
                   </div>
 
                   {display.type === 'compare' ? (
@@ -457,12 +443,21 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <div className="mb-4">
-                      <p className="text-lg font-bold text-main">
-                        {display.probability != null ? `${(display.probability * 100).toFixed(1)}%` : '—'}
-                      </p>
                       {display.model_name && (
-                        <p className="text-xs text-muted mt-0.5">{display.model_name}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-xs text-muted">{display.model_name}</p>
+                          {display.risk_label && (
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${getRiskColor(display.risk_label)}`}>
+                              {display.risk_label}
+                            </span>
+                          )}
+                        </div>
                       )}
+                      <p className="text-lg font-bold text-main">
+                        {display.probability != null
+                          ? `${(display.probability * 100).toFixed(1)}%`
+                          : '—'}
+                      </p>
                     </div>
                   )}
 
@@ -473,10 +468,10 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="flex justify-between items-center pt-4 border-t border-border">
+                  <div className="flex justify-between items-center pt-4 border-t border-border mt-auto">
                     <span className="text-[10px] text-muted">{new Date(exp.created_at).toLocaleDateString('ru-RU')}</span>
                     <button
-                      onClick={() => { setDeleteTargetId(exp.id); setShowDeleteModal(true); }}
+                      onClick={(e) => { e.stopPropagation(); setDeleteTargetId(exp.id); setShowDeleteModal(true); }}
                       className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-semibold text-error hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                     >
                       <TrashIcon /> delete
@@ -492,6 +487,103 @@ export default function Dashboard() {
       {activeTab === 'select-client' && (
         <ClientSelector onClientSelected={handleClientSelected} />
       )}
+
+      {/* History Experiment Modal */}
+      {selectedExperiment && (() => {
+        const exp = selectedExperiment;
+        const display = getExperimentDisplay(exp);
+        return (
+          <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedExperiment(null)}>
+            {display.type === 'compare' ? (
+              <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h2 className="text-xl font-bold mb-2 text-main text-center">Model Comparison</h2>
+                <p className="text-sm text-muted mb-6 text-center">
+                  Client ID: <strong>{exp.sk_id_curr}</strong>
+                  {' · '}
+                  {new Date(exp.created_at).toLocaleDateString('ru-RU')}
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[display.a, display.b].map((model, idx) => {
+                    const shapData = (Array.isArray(exp.shap_values) ? exp.shap_values[idx] : null) ?? null;
+                    return (
+                      <div key={idx} className="bg-card border border-border rounded-md p-6">
+                        <p className="text-base font-semibold text-main">{model.model_name}</p>
+                        <p className="text-3xl font-bold text-main mt-3">
+                          {(model.probability * 100).toFixed(1)}%
+                        </p>
+                        <span className={`inline-block mt-2 px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(model.risk_label)}`}>
+                          {model.risk_label}
+                        </span>
+                        <div className="mt-4">
+                          <ShapWaterfallChart shapValues={shapData} loading={false} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="text-center mt-4">
+                  <p className="text-sm text-muted">Score difference</p>
+                  <p className={`text-2xl font-bold mt-1 ${
+                    display.score_diff_pp < 5 ? 'text-success' :
+                    display.score_diff_pp < 15 ? 'text-warning' : 'text-error'
+                  }`}>
+                    {display.score_diff_pp} pp
+                  </p>
+                  <p className="text-xs text-muted mt-1">
+                    {display.score_diff_pp < 5
+                      ? 'Models agree'
+                      : display.score_diff_pp < 15
+                      ? 'Moderate disagreement'
+                      : 'Models significantly disagree'}
+                  </p>
+                </div>
+                <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setSelectedExperiment(null)}>
+                  Close
+                </button>
+              </div>
+            ) : (
+              (() => {
+                const shapData = exp.results?.[0]?.shap_values
+                  ?? (Array.isArray(exp.shap_values) ? exp.shap_values[0] : exp.shap_values)
+                  ?? null;
+                return (
+                  <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${shapData ? 'max-w-2xl' : 'max-w-sm'}`} onClick={e => e.stopPropagation()}>
+                    <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
+                    <p className="text-sm text-muted mb-6">
+                      Client ID: <strong>{exp.sk_id_curr}</strong>
+                      {' · '}
+                      {new Date(exp.created_at).toLocaleDateString('ru-RU')}
+                    </p>
+                    <div className="mb-6">
+                      <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(display.risk_label)}`}>
+                        {display.risk_label} Risk
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted mb-4 leading-relaxed">
+                      Probability Score:{' '}
+                      <span className="text-main font-medium">
+                        {display.probability != null ? `${(display.probability * 100).toFixed(1)}%` : '—'}
+                      </span>
+                    </p>
+                    {display.model_name && (
+                      <p className="text-xs text-muted mb-4">
+                        Model:{' '}
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          {display.model_name}
+                        </span>
+                      </p>
+                    )}
+                    <ShapWaterfallChart shapValues={shapData} loading={false} />
+                    <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setSelectedExperiment(null)}>
+                      Close
+                    </button>
+                  </div>
+                );
+              })()
+            )}
+          </div>
+        );
+      })()}
 
       {/* Result Modal */}
       {showModal && result && (
