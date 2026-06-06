@@ -6,12 +6,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-from .models import Application, ClientFeature, RAW_FEATURES
+from .models import Application, ClientFeature, MLModel, RAW_FEATURES
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
 from .utils import (
     predict_credit_risk, get_shap_values,
     LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE,
     get_client_features_dict, get_currency_rate, MONETARY_FIELDS,
+    get_default_model_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         combined_overrides = {**overrides, **converted}
 
+        model_id = serializer.validated_data.get('model_id') or None
+        if model_id is None:
+            model_id = get_default_model_id()
+        try:
+            ml_model_obj = MLModel.objects.get(pk=model_id, is_active=True)
+        except MLModel.DoesNotExist:
+            raise ValidationError({"detail": "Selected model not found or inactive."})
+
         # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
             sk_id_curr=sk_id_curr,
@@ -85,6 +94,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             amt_credit=amt_credit,
             currency=currency,
             overrides=combined_overrides,
+            model_id=model_id,
         )
 
         # Stop the execution if the ML engine reports that the client is missing
@@ -102,6 +112,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 amt_credit=amt_credit,
                 currency=currency,
                 overrides=combined_overrides,
+                model_id=model_id,
             )
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
@@ -126,6 +137,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             risk_label=risk_label,
             sk_id_curr=sk_id_curr,
             shap_values=shap_data,
+            ml_model=ml_model_obj,
         )
 
 
@@ -161,6 +173,7 @@ class ExplainView(APIView):
                 amt_credit=amt_credit,
                 currency=currency,
                 overrides=combined_overrides,
+                model_id=get_default_model_id(),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -324,3 +337,21 @@ class ClientFeaturesView(APIView):
             'numeric_features': numeric_features,
             'categorical_features': categorical_features,
         })
+
+
+class MLModelListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        models = MLModel.objects.filter(is_active=True).order_by('created_at')
+        data = [
+            {
+                'id': m.id,
+                'name': m.name,
+                'model_type': m.model_type,
+                'metrics': m.metrics,
+                'created_at': m.created_at.isoformat(),
+            }
+            for m in models
+        ]
+        return Response(data)

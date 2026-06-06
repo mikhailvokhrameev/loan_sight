@@ -1,6 +1,6 @@
 from rest_framework import serializers # DRF tools for creating serializers
 from django.contrib.auth import get_user_model
-from .models import Application # Connecting the application model
+from .models import Application, MLModel # Connecting the application model
 
 User = get_user_model() # Get current user model
 
@@ -53,13 +53,25 @@ class ApplicationSerializer(serializers.ModelSerializer): # Loan application ser
         default=dict,
         write_only=True,
     )
+    model_id = serializers.IntegerField(
+        required=False, allow_null=True, write_only=True,
+    )
+    ml_model_name = serializers.SerializerMethodField(read_only=True)
+
+    def get_ml_model_name(self, obj):
+        return obj.ml_model.name if obj.ml_model else None
 
     class Meta:
         model = Application
-        fields = ['id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency', 'probability', 'risk_label', 'shap_values', 'created_at', 'overrides', 'categorical_overrides']
-        read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at']
+        fields = [
+            'id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency',
+            'probability', 'risk_label', 'shap_values', 'created_at',
+            'overrides', 'categorical_overrides', 'model_id', 'ml_model_name',
+        ]
+        read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at', 'ml_model_name']
 
     def create(self, validated_data):
         validated_data.pop('overrides', None)
         validated_data.pop('categorical_overrides', None)
+        validated_data.pop('model_id', None)
         return super().create(validated_data)

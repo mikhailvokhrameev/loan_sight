@@ -120,6 +120,10 @@ export const applicationsAPI = {
     api.delete(`/applications/${id}/`),
 };
 
+export const modelsAPI = {
+  getAll: () => api.get('/models/'),
+};
+
 export const clientsAPI = {
   getPresets: () =>
     api.get('/clients/presets/'),
