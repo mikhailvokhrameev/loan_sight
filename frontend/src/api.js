@@ -120,6 +120,11 @@ export const applicationsAPI = {
     api.delete(`/applications/${id}/`),
 };
 
+export const modelsAPI = {
+  getAll: () => api.get('/models/'),
+  compare: (data) => api.post('/compare/', data),
+};
+
 export const clientsAPI = {
   getPresets: () =>
     api.get('/clients/presets/'),

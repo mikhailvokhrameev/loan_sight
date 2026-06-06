@@ -6,12 +6,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-from .models import Application, ClientFeature, RAW_FEATURES
+from .models import Application, ClientFeature, MLModel, RAW_FEATURES
 from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
 from .utils import (
     predict_credit_risk, get_shap_values,
     LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE,
     get_client_features_dict, get_currency_rate, MONETARY_FIELDS,
+    get_default_model_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         combined_overrides = {**overrides, **converted}
 
+        model_id = serializer.validated_data.get('model_id') or None
+        if model_id is None:
+            model_id = get_default_model_id()
+        try:
+            ml_model_obj = MLModel.objects.get(pk=model_id, is_active=True)
+        except MLModel.DoesNotExist:
+            raise ValidationError({"detail": "Selected model not found or inactive."})
+
         # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
             sk_id_curr=sk_id_curr,
@@ -85,6 +94,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             amt_credit=amt_credit,
             currency=currency,
             overrides=combined_overrides,
+            model_id=model_id,
         )
 
         # Stop the execution if the ML engine reports that the client is missing
@@ -102,6 +112,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 amt_credit=amt_credit,
                 currency=currency,
                 overrides=combined_overrides,
+                model_id=model_id,
             )
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
@@ -126,6 +137,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             risk_label=risk_label,
             sk_id_curr=sk_id_curr,
             shap_values=shap_data,
+            ml_model=ml_model_obj,
         )
 
 
@@ -161,6 +173,7 @@ class ExplainView(APIView):
                 amt_credit=amt_credit,
                 currency=currency,
                 overrides=combined_overrides,
+                model_id=get_default_model_id(),
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
@@ -324,3 +337,112 @@ class ClientFeaturesView(APIView):
             'numeric_features': numeric_features,
             'categorical_features': categorical_features,
         })
+
+
+class CompareModelsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        sk_id_curr    = request.data.get('sk_id_curr')
+        currency      = request.data.get('currency', 'RUB')
+        overrides     = request.data.get('overrides') or {}
+        cat_overrides = request.data.get('categorical_overrides') or {}
+        model_id_a    = request.data.get('model_id_a')
+        model_id_b    = request.data.get('model_id_b')
+
+        if not sk_id_curr:
+            return Response({'detail': 'sk_id_curr is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not model_id_a or not model_id_b:
+            return Response({'detail': 'model_id_a and model_id_b are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if model_id_a == model_id_b:
+            return Response({'detail': 'Please select two different models.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        converted = {}
+        for feature, str_value in cat_overrides.items():
+            mapping = LABEL_MAPPINGS.get(feature)
+            if mapping and str_value in mapping:
+                converted[feature] = float(mapping[str_value])
+        combined_overrides = {**overrides, **converted}
+
+        def score_one(model_id):
+            import time
+            try:
+                ml_obj = MLModel.objects.get(pk=model_id, is_active=True)
+            except MLModel.DoesNotExist:
+                return {'error': f'Model {model_id} not found or inactive.'}
+
+            t0 = time.perf_counter()
+            try:
+                prob, risk = predict_credit_risk(
+                    sk_id_curr=int(sk_id_curr),
+                    amt_income=None,
+                    amt_credit=None,
+                    currency=currency,
+                    overrides=combined_overrides,
+                    model_id=model_id,
+                )
+            except Exception as e:
+                return {'error': str(e)}
+
+            shap_data = None
+            try:
+                shap_data = get_shap_values(
+                    sk_id_curr=int(sk_id_curr),
+                    amt_income=None,
+                    amt_credit=None,
+                    currency=currency,
+                    overrides=combined_overrides,
+                    model_id=model_id,
+                )
+            except Exception as exc:
+                logger.warning("SHAP failed in compare for model %s: %s", model_id, exc)
+
+            latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+            return {
+                'model_id': model_id,
+                'model_name': ml_obj.name,
+                'model_type': ml_obj.model_type,
+                'probability': prob,
+                'risk_label': risk,
+                'latency_ms': latency_ms,
+                'shap_values': shap_data,
+            }
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            fut_a = executor.submit(score_one, int(model_id_a))
+            fut_b = executor.submit(score_one, int(model_id_b))
+            result_a = fut_a.result()
+            result_b = fut_b.result()
+
+        if 'error' in result_a:
+            return Response({'detail': result_a['error']}, status=status.HTTP_400_BAD_REQUEST)
+        if 'error' in result_b:
+            return Response({'detail': result_b['error']}, status=status.HTTP_400_BAD_REQUEST)
+
+        score_diff = round(abs(result_a['probability'] - result_b['probability']) * 100, 2)
+
+        return Response({
+            'model_a': result_a,
+            'model_b': result_b,
+            'score_diff_pp': score_diff,
+        })
+
+
+class MLModelListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        models = MLModel.objects.filter(is_active=True).order_by('created_at')
+        data = [
+            {
+                'id': m.id,
+                'name': m.name,
+                'model_type': m.model_type,
+                'metrics': m.metrics,
+                'created_at': m.created_at.isoformat(),
+            }
+            for m in models
+        ]
+        return Response(data)

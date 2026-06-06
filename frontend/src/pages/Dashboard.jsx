@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { applicationsAPI, clientsAPI } from '../api';
+import { applicationsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
@@ -17,6 +17,11 @@ export default function Dashboard() {
   const [deleteTargetId, setDeleteTargetId] = useState(null);
   const { user } = useAuth();
 
+  const [models, setModels] = useState([]);
+  const [selectedModelId, setSelectedModelId] = useState(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [selectedModelIdB, setSelectedModelIdB] = useState(null);
+
   const [formData, setFormData] = useState({ sk_id_curr: '' });
   const [currency, setCurrency] = useState('RUB');
   const [result, setResult] = useState(null);
@@ -27,6 +32,14 @@ export default function Dashboard() {
   const [assessmentMode, setAssessmentMode] = useState('auto');
   const [featuresLoading, setFeaturesLoading] = useState(false);
   const [featuresError, setFeaturesError] = useState('');
+
+  useEffect(() => {
+    modelsAPI.getAll().then(res => {
+      setModels(res.data);
+      if (res.data.length > 0) setSelectedModelId(res.data[0].id);
+      if (res.data.length > 1) setSelectedModelIdB(res.data[1].id);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'history') loadApplications();
@@ -62,13 +75,25 @@ export default function Dashboard() {
     setLoading(true);
     setError('');
     try {
-      const payload = {
-        sk_id_curr: Number(formData.sk_id_curr),
-        currency: assessmentMode === 'manual' ? currency : 'RUB',
-        overrides: assessmentMode === 'manual' ? numericOverrides : {},
-        categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
-      };
-      const response = await applicationsAPI.create(payload);
+      let response;
+      if (compareMode) {
+        response = await modelsAPI.compare({
+          sk_id_curr: Number(formData.sk_id_curr),
+          overrides: assessmentMode === 'manual' ? numericOverrides : {},
+          categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
+          model_id_a: selectedModelId,
+          model_id_b: selectedModelIdB,
+        });
+      } else {
+        const payload = {
+          sk_id_curr: Number(formData.sk_id_curr),
+          currency: assessmentMode === 'manual' ? currency : 'RUB',
+          overrides: assessmentMode === 'manual' ? numericOverrides : {},
+          categorical_overrides: assessmentMode === 'manual' ? categoricalOverrides : {},
+          model_id: selectedModelId,
+        };
+        response = await applicationsAPI.create(payload);
+      }
       setResult(response.data);
       setShowModal(true);
       setFormData({ sk_id_curr: '' });
@@ -258,8 +283,71 @@ export default function Dashboard() {
                 </>
               )}
 
+              {models.length > 1 && (
+                <div className="mb-5">
+                  <label className="block text-sm font-medium mb-2 text-main">
+                    Scoring Model
+                  </label>
+                  <select
+                    className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                    value={selectedModelId ?? ''}
+                    onChange={e => setSelectedModelId(Number(e.target.value))}
+                    disabled={loading}
+                  >
+                    {models.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.model_type})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedModelId && (() => {
+                    const m = models.find(x => x.id === selectedModelId);
+                    if (!m?.metrics) return null;
+                    return (
+                      <p className="text-xs text-muted mt-1">
+                        {Object.entries(m.metrics)
+                          .map(([k, v]) => `${k}: ${typeof v === 'number' ? v.toFixed(3) : v}`)
+                          .join(' · ')}
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {models.length >= 2 && (
+                <div className="mb-5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={compareMode}
+                      onChange={e => setCompareMode(e.target.checked)}
+                      disabled={loading}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm text-main">model comparison mode</span>
+                  </label>
+                  {compareMode && (
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium mb-2 text-main">Model B</label>
+                      <select
+                        className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                        value={selectedModelIdB ?? ''}
+                        onChange={e => setSelectedModelIdB(Number(e.target.value))}
+                        disabled={loading}
+                      >
+                        {models.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.model_type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <button type="submit" className="w-full py-3 text-base font-medium rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover transition-all disabled:opacity-60" disabled={loading}>
-                {loading ? 'Processing...' : 'Get Assessment'}
+                {loading ? 'Processing...' : compareMode ? 'Compare Models' : 'Get Assessment'}
               </button>
             </form>
           </div>
@@ -302,23 +390,77 @@ export default function Dashboard() {
       {/* Result Modal */}
       {showModal && result && (
         <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${result.shap_values ? 'max-w-2xl' : 'max-w-sm'}`}>
-            <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
-            <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
-            <div className="mb-6">
-              <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(result.risk_label)}`}>
-                {result.risk_label} Risk
-              </span>
+          {result.model_a ? (
+            // Comparison result
+            <div className="bg-card border border-border rounded-md p-8 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+              <h2 className="text-xl font-bold mb-2 text-main text-center">Model Comparison</h2>
+              <p className="text-sm text-muted mb-6 text-center">For <strong>{user?.first_name || 'User'}</strong></p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[result.model_a, result.model_b].map((model, idx) => (
+                  <div key={idx} className="bg-card border border-border rounded-md p-6">
+                    <p className="text-base font-semibold text-main">{model.name}</p>
+                    <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      {model.model_type}
+                    </span>
+                    <p className="text-3xl font-bold text-main mt-3">
+                      {(model.probability * 100).toFixed(1)}%
+                    </p>
+                    <span className={`inline-block mt-2 px-2 py-1 rounded-full text-[10px] font-bold tracking-wider ${getRiskColor(model.risk_label)}`}>
+                      {model.risk_label}
+                    </span>
+                    <p className="text-xs text-muted mt-2">{model.latency_ms} ms</p>
+                    <ShapWaterfallChart shapValues={model.shap_values} loading={false} />
+                  </div>
+                ))}
+              </div>
+              <div className="text-center mt-4">
+                <p className="text-sm text-muted">Score difference</p>
+                <p className={`text-2xl font-bold mt-1 ${
+                  result.score_diff_pp < 5 ? 'text-success' :
+                  result.score_diff_pp < 15 ? 'text-warning' : 'text-error'
+                }`}>
+                  {result.score_diff_pp} pp
+                </p>
+                <p className="text-xs text-muted mt-1">
+                  {result.score_diff_pp < 5
+                    ? 'Models agree'
+                    : result.score_diff_pp < 15
+                    ? 'Moderate disagreement'
+                    : 'Models significantly disagree'}
+                </p>
+              </div>
+              <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
+                Close
+              </button>
             </div>
-            <p className="text-sm text-muted mb-4 leading-relaxed">
-              Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
-              Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
-            </p>
-            <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
-            <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
-              Close
-            </button>
-          </div>
+          ) : (
+            // Single assessment result
+            <div className={`bg-card border border-border rounded-md p-8 shadow-2xl w-full max-h-[90vh] overflow-y-auto text-center ${result.shap_values ? 'max-w-2xl' : 'max-w-sm'}`}>
+              <h2 className="text-xl font-bold mb-2 text-main">Assessment Result</h2>
+              <p className="text-sm text-muted mb-6">For <strong>{user?.first_name || 'User'}</strong></p>
+              <div className="mb-6">
+                <span className={`px-4 py-2 rounded-full text-lg font-bold ${getRiskColor(result.risk_label)}`}>
+                  {result.risk_label} Risk
+                </span>
+              </div>
+              <p className="text-sm text-muted mb-4 leading-relaxed">
+                Probability Score: <span className="text-main font-medium">{(Number(result.probability) * 100).toFixed(1)}%</span><br/>
+                Loan: <span className="text-main font-medium">{Number(result.amt_credit).toLocaleString()} {result.currency}</span>
+              </p>
+              {result.ml_model_name && (
+                <p className="text-xs text-muted mb-4">
+                  Model:{' '}
+                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                    {result.ml_model_name}
+                  </span>
+                </p>
+              )}
+              <ShapWaterfallChart shapValues={result.shap_values} loading={false} />
+              <button className="w-full mt-6 py-2 bg-primary text-primary-foreground font-medium rounded-sm hover:bg-primary-hover transition-all" onClick={() => setShowModal(false)}>
+                Close
+              </button>
+            </div>
+          )}
         </div>
       )}
 

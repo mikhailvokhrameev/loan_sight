@@ -12,6 +12,20 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+class MLModel(models.Model):
+    name          = models.CharField(max_length=100, unique=True)
+    model_type    = models.CharField(max_length=50)  # "lgbm", "xgb", "catboost", "logreg"
+    joblib_path   = models.CharField(max_length=500)
+    feature_names = models.JSONField()
+    metrics       = models.JSONField()
+    thresholds    = models.JSONField()
+    is_active     = models.BooleanField(default=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
 class Application(models.Model): # Creates a table of loan applications
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications') # Each application belongs to one user
     amt_income = models.DecimalField(max_digits=15, decimal_places=2)
@@ -22,6 +36,12 @@ class Application(models.Model): # Creates a table of loan applications
     shap_values = models.JSONField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     sk_id_curr = models.IntegerField(null=True, blank=True)
+    ml_model = models.ForeignKey(
+        'MLModel',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='applications',
+    )
     
     def __str__(self):
         return f"App #{self.id} - User {self.user.email} ({self.risk_label})"

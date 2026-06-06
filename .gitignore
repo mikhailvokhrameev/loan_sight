@@ -147,6 +147,7 @@ docker-compose.override.yml
 # Large ML-models and DB
 *.parquet
 ml_models/*.parquet
+artifacts/
 
 
 # IDE, EDITORS & SYSTEM
@@ -167,3 +168,6 @@ tempCodeRunnerFile.py
 *.sw?
 /site
 .abstra/
+
+# Scripts
+backend/api/management/
