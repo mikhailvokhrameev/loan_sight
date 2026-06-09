@@ -152,8 +152,10 @@ RAW_FEATURES = [
     'CC_SK_DPD_MEAN', 'CC_SK_DPD_DEF_MEAN', 'CC_SK_DPD_DEF_SUM', 'CC_SK_DPD_DEF_VAR'
 ]
 
+def _sanitize(feature_name):
+    return feature_name.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
+
+
 # Dynamically create fields in Django during class loading
 for feature in RAW_FEATURES:
-    # Clear the name of special characters and FORCEDLY collapse '__' into '_'
-    sanitized_field = feature.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
-    ClientFeature.add_to_class(sanitized_field, models.FloatField(null=True, blank=True))
+    ClientFeature.add_to_class(_sanitize(feature), models.FloatField(null=True, blank=True))

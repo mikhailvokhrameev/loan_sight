@@ -4,9 +4,10 @@ import requests
 import joblib
 import numpy as np
 import shap
+from sklearn.pipeline import Pipeline
 from django.conf import settings
 from django.core.cache import cache
-from .models import ClientFeature, RAW_FEATURES, MLModel
+from .models import ClientFeature, RAW_FEATURES, MLModel, _sanitize
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +115,7 @@ def get_client_features_dict(sk_id_curr):
 
         feature_dict = {'SK_ID_CURR': sk_id_curr}
         for feature in RAW_FEATURES:
-            sanitized_field = feature.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
-            value = getattr(client, sanitized_field, None)
+            value = getattr(client, _sanitize(feature), None)
             feature_dict[feature] = value  # None preserved → NaN in X_arr; models handle missing per their type
 
         return feature_dict
@@ -138,7 +138,6 @@ def predict_credit_risk(sk_id_curr, amt_income, amt_credit, currency, overrides=
     if error:
         return None, error
 
-    from sklearn.pipeline import Pipeline
     X_input = X_arr if isinstance(estimator, Pipeline) else np.where(np.isnan(X_arr), 0.0, X_arr).astype(np.float32)
     proba = float(estimator.predict_proba(X_input)[0, 1])
 
@@ -249,8 +248,6 @@ def get_shap_values(sk_id_curr, amt_income, amt_credit, currency, top_n=15, over
     )
     if error:
         raise ValueError(error)
-
-    from sklearn.pipeline import Pipeline
 
     if isinstance(estimator, Pipeline):
         # Pipeline's SimpleImputer fills NaN with training means before scaling
