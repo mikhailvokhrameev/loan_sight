@@ -118,6 +118,11 @@ export const experimentsAPI = {
 
 export const modelsAPI = {
   getAll: () => api.get('/models/'),
+  upload: (formData) => api.post('/models/', formData, {
+    headers: { 'Content-Type': undefined },
+  }),
+  delete: (id) => api.delete(`/models/${id}/`),
+  clearAll: () => api.delete('/models/clear/'),
   compare: (data) => api.post('/compare/', data),
 };
 

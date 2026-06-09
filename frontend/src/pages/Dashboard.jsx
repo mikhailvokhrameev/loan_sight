@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { experimentsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
+import ModelTypeBadge from '../components/ModelTypeBadge';
 import ClientSelector from './ClientSelector';
 import FeatureOverridePanel from '../components/FeatureOverridePanel';
 
@@ -108,9 +109,7 @@ const ExperimentResultModal = ({ exp, onClose }) => {
                 <div key={idx} className="bg-card border border-border rounded-md p-6">
                   <p className="text-base font-semibold text-main">{model.model_name}</p>
                   {model.model_type && (
-                    <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                      {model.model_type}
-                    </span>
+                    <div className="mt-1"><ModelTypeBadge type={model.model_type} /></div>
                   )}
                   <p className="text-3xl font-bold text-main mt-3">
                     {(model.probability * 100).toFixed(1)}%
@@ -369,7 +368,7 @@ export default function Dashboard() {
             <form onSubmit={handleSubmitAssessment}>
               <div className="mb-5">
                 <label className="block text-sm font-medium mb-2 text-main">Client ID</label>
-                <input type="number" name="sk_id_curr" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100002" disabled={loading} />
+                <input type="number" name="sk_id_curr" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100042" disabled={loading} />
               </div>
 
               {formData.sk_id_curr && (
@@ -518,7 +517,7 @@ export default function Dashboard() {
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-error border border-error rounded-sm hover:bg-error-bg transition-colors"
               >
-                <TrashIcon /> Clear all
+                <TrashIcon /> delete all
               </button>
             </div>
           )}

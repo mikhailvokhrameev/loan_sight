@@ -1,4 +1,9 @@
 import logging
+import os
+import json
+import shutil
+import tempfile
+from django.conf import settings
 from rest_framework import viewsets, generics, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -474,19 +479,142 @@ class CompareModelsView(APIView):
         })
 
 
+def _model_to_dict(m):
+    return {
+        'id': m.id,
+        'name': m.name,
+        'model_type': m.model_type,
+        'description': m.description,
+        'metrics': m.metrics,
+        'created_at': m.created_at.isoformat(),
+    }
+
+
+def _detect_model_type(estimator):
+    from sklearn.pipeline import Pipeline
+    obj = estimator.steps[-1][1] if isinstance(estimator, Pipeline) else estimator
+    module = type(obj).__module__
+    name = type(obj).__name__.lower()
+    if 'lightgbm' in module:
+        return 'lgbm'
+    if 'xgboost' in module:
+        return 'xgb'
+    if 'catboost' in module:
+        return 'catboost'
+    if 'logistic' in name:
+        return 'logreg'
+    return None
+
+
 class MLModelListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         models = MLModel.objects.filter(is_active=True).order_by('created_at')
-        data = [
-            {
-                'id': m.id,
-                'name': m.name,
-                'model_type': m.model_type,
-                'metrics': m.metrics,
-                'created_at': m.created_at.isoformat(),
-            }
-            for m in models
-        ]
-        return Response(data)
+        return Response([_model_to_dict(m) for m in models])
+
+    def post(self, request):
+        name = request.data.get('name', '').strip()
+        description = request.data.get('description', '').strip()
+        joblib_file = request.FILES.get('joblib_file')
+        metadata_file = request.FILES.get('metadata_file')
+
+        if not name:
+            return Response({'detail': 'Model name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not joblib_file:
+            return Response({'detail': 'Model file (.joblib) is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not metadata_file:
+            return Response({'detail': 'Metadata file (metadata.json) is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            metadata = json.loads(metadata_file.read().decode('utf-8'))
+        except Exception:
+            return Response({'detail': 'Invalid metadata.json — must be valid UTF-8 JSON.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        feature_names = metadata.get('feature_names', [])
+        metrics = metadata.get('metrics', {})
+        thresholds = metadata.get('thresholds', {})
+
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix='.joblib')
+        with os.fdopen(tmp_fd, 'wb') as tmp:
+            for chunk in joblib_file.chunks():
+                tmp.write(chunk)
+
+        import joblib as jl
+        try:
+            estimator = jl.load(tmp_path)
+        except Exception:
+            os.unlink(tmp_path)
+            return Response(
+                {'detail': 'Failed to load model file. Make sure it is a valid joblib file.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        model_type = _detect_model_type(estimator)
+        if model_type is None:
+            os.unlink(tmp_path)
+            return Response(
+                {'detail': 'Unrecognized model type. Supported: LightGBM, XGBoost, CatBoost, LogisticRegression.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        safe_dir_name = name.replace(' ', '_').replace('/', '_')
+        dest_dir = os.path.join(settings.BASE_DIR, 'ml_models', safe_dir_name)
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_path = os.path.join(dest_dir, 'model.joblib')
+        shutil.move(tmp_path, dest_path)
+
+        obj, created = MLModel.objects.update_or_create(
+            name=name,
+            defaults={
+                'model_type': model_type,
+                'description': description,
+                'joblib_path': dest_path,
+                'feature_names': feature_names,
+                'metrics': metrics,
+                'thresholds': thresholds,
+                'is_active': True,
+            },
+        )
+
+        http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(_model_to_dict(obj), status=http_status)
+
+
+class MLModelDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            model = MLModel.objects.get(pk=pk)
+        except MLModel.DoesNotExist:
+            return Response({'detail': 'Model not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if model.joblib_path and os.path.isfile(model.joblib_path):
+            try:
+                os.remove(model.joblib_path)
+                dir_path = os.path.dirname(model.joblib_path)
+                if os.path.isdir(dir_path) and not os.listdir(dir_path):
+                    os.rmdir(dir_path)
+            except Exception:
+                pass
+
+        model.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class MLModelClearView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        for model in MLModel.objects.all():
+            if model.joblib_path and os.path.isfile(model.joblib_path):
+                try:
+                    os.remove(model.joblib_path)
+                    dir_path = os.path.dirname(model.joblib_path)
+                    if os.path.isdir(dir_path) and not os.listdir(dir_path):
+                        os.rmdir(dir_path)
+                except Exception:
+                    pass
+        deleted_count, _ = MLModel.objects.all().delete()
+        return Response({'deleted': deleted_count}, status=status.HTTP_200_OK)

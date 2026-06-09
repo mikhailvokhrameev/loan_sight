@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { modelsAPI } from '../api';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
+import ModelTypeBadge from '../components/ModelTypeBadge';
 
 const getRiskColor = (risk) => {
   if (!risk) return 'text-muted';
@@ -137,9 +138,7 @@ export default function CompareModels() {
             {[result.model_a, result.model_b].map((model, idx) => (
               <div key={idx} className="bg-card border border-border rounded-md p-6">
                 <p className="text-base font-semibold text-main">{model.name}</p>
-                <span className="inline-block mt-1 text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                  {model.model_type}
-                </span>
+                <div className="mt-1"><ModelTypeBadge type={model.model_type} /></div>
                 <p className="text-3xl font-bold text-main mt-3">
                   {(model.probability * 100).toFixed(1)}%
                 </p>

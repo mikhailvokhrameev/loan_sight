@@ -4,7 +4,7 @@ from .views import (
     CustomTokenObtainPairView, RegisterView, CurrentUserView,
     ExperimentViewSet, ExperimentClearView,
     ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView,
-    MLModelListView, CompareModelsView,
+    MLModelListView, MLModelDetailView, MLModelClearView, CompareModelsView,
 )
 from rest_framework_simplejwt.views import TokenRefreshView
 
@@ -21,6 +21,8 @@ urlpatterns = [
     path('clients/search/', ClientSearchView.as_view(), name='client_search'),
     path('clients/features/<int:sk_id_curr>/', ClientFeaturesView.as_view(), name='client_features'),
     path('models/', MLModelListView.as_view(), name='ml_models'),
+    path('models/clear/', MLModelClearView.as_view(), name='ml_model_clear'),
+    path('models/<int:pk>/', MLModelDetailView.as_view(), name='ml_model_detail'),
     path('compare/', CompareModelsView.as_view(), name='compare_models'),
     path('experiments/clear/', ExperimentClearView.as_view(), name='experiment_clear'),
     path('', include(router.urls)),
