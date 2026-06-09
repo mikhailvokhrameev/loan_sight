@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    CustomTokenObtainPairView, RegisterView, CurrentUserView,
+    CustomTokenObtainPairView, RegisterView, CurrentUserView, LogoutView,
     ExperimentViewSet, ExperimentClearView,
     ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView,
     MLModelListView, MLModelDetailView, MLModelClearView, CompareModelsView,
@@ -14,6 +14,7 @@ router.register(r'experiments', ExperimentViewSet, basename='experiment')
 urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/me/', CurrentUserView.as_view(), name='current_user'),
     path('explain/', ExplainView.as_view(), name='explain'),

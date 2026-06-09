@@ -10,6 +10,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
 from django.contrib.auth import get_user_model
 from .models import Experiment, ClientFeature, MLModel, RAW_FEATURES
 from .serializers import ExperimentSerializer, UserSerializer, RegisterSerializer
@@ -29,6 +31,19 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     Custom class for obtaining JWT access and refresh tokens
     """
     pass
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            RefreshToken(request.data['refresh']).blacklist()
+        except KeyError:
+            return Response({'detail': 'refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        except TokenError:
+            return Response({'detail': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class RegisterView(generics.CreateAPIView):
     """

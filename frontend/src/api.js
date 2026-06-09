@@ -100,6 +100,10 @@ export const authAPI = {
   // Performs a partial update on the current user's profile attributes
   updateProfile: (data) =>
     api.patch('/auth/me/', data),
+
+  // Invalidates the refresh token on the backend (blacklist)
+  logout: (refreshToken) =>
+    api.post('/auth/logout/', { refresh: refreshToken }),
 };
 
 export const experimentsAPI = {

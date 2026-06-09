@@ -64,7 +64,17 @@ export function AuthProvider({ children }) {
    * logout action:
    * Purges all cryptographic credentials and metadata elements, revoking client-side session rights.
    */
-  const logout = () => {
+  const logout = async () => {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      try {
+        await import('../api').then(({ default: api }) =>
+          api.post('/auth/logout/', { refresh: refreshToken })
+        );
+      } catch {
+        // Token already expired or invalid — proceed with local cleanup
+      }
+    }
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
