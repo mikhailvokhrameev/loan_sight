@@ -19,6 +19,7 @@ class MLModel(models.Model):
     feature_names = models.JSONField()
     metrics       = models.JSONField()
     thresholds    = models.JSONField()
+    description   = models.TextField(blank=True, default='')
     is_active     = models.BooleanField(default=True)
     created_at    = models.DateTimeField(auto_now_add=True)
 
