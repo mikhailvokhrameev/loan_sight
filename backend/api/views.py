@@ -11,7 +11,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from django.contrib.auth import get_user_model
 from .models import Experiment, ClientFeature, MLModel, RAW_FEATURES
 from .serializers import ExperimentSerializer, UserSerializer, RegisterSerializer
@@ -26,23 +27,90 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model() # Get current user model
 
+
+def _set_auth_cookies(response, access_token, refresh_token=None):
+    """Sets JWT tokens as httpOnly cookies on the response"""
+    secure = settings.JWT_AUTH_COOKIE_SECURE
+    samesite = settings.JWT_AUTH_COOKIE_SAMESITE
+    access_max_age = int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds())
+    refresh_max_age = int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds())
+
+    response.set_cookie(
+        settings.JWT_AUTH_COOKIE,
+        access_token,
+        max_age=access_max_age,
+        httponly=True,
+        secure=secure,
+        samesite=samesite,
+        path='/',
+    )
+    if refresh_token:
+        response.set_cookie(
+            settings.JWT_AUTH_REFRESH_COOKIE,
+            refresh_token,
+            max_age=refresh_max_age,
+            httponly=True,
+            secure=secure,
+            samesite=samesite,
+            path='/',
+        )
+
+
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """
-    Custom class for obtaining JWT access and refresh tokens
-    """
-    pass
+    """Sets tokens as httpOnly cookies"""
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == 200:
+            _set_auth_cookies(response, response.data['access'], response.data['refresh'])
+            response.data = {}
+        return response
+
+
+class CookieTokenRefreshView(APIView):
+    """Reads refresh token from cookie, issues new tokens as cookies"""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        refresh_token = (
+            request.data.get('refresh') or
+            request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
+        )
+        if not refresh_token:
+            return Response({'detail': 'Refresh token not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        serializer = TokenRefreshSerializer(data={'refresh': refresh_token})
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
+
+        response = Response({})
+        _set_auth_cookies(
+            response,
+            serializer.validated_data['access'],
+            serializer.validated_data.get('refresh'),
+        )
+        return response
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        try:
-            RefreshToken(request.data['refresh']).blacklist()
-        except KeyError:
-            return Response({'detail': 'refresh token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        except TokenError:
-            return Response({'detail': 'Invalid or expired token.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        refresh_token = (
+            request.data.get('refresh') or
+            request.COOKIES.get(settings.JWT_AUTH_REFRESH_COOKIE)
+        )
+        if refresh_token:
+            try:
+                RefreshToken(refresh_token).blacklist()
+            except TokenError:
+                pass
+
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        response.delete_cookie(settings.JWT_AUTH_COOKIE)
+        response.delete_cookie(settings.JWT_AUTH_REFRESH_COOKIE)
+        return response
 
 
 class RegisterView(generics.CreateAPIView):
@@ -335,8 +403,7 @@ class ClientFeaturesView(APIView):
             val = getattr(client, field, None)
             numeric_features[feature] = float(val) if val is not None else None
 
-        # Convert monetary fields from RUB to the requested currency for display.
-        # rate = RUB per 1 unit of currency, so display_value = rub_value / rate.
+        # Convert monetary fields from RUB to the requested currency for display
         if currency != 'RUB':
             rate = get_currency_rate(currency, base_currency='RUB')
             if rate and rate > 0:

@@ -1,19 +1,18 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    CustomTokenObtainPairView, RegisterView, CurrentUserView, LogoutView,
+    CustomTokenObtainPairView, CookieTokenRefreshView, RegisterView, CurrentUserView, LogoutView,
     ExperimentViewSet, ExperimentClearView,
     ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView,
     MLModelListView, MLModelDetailView, MLModelClearView, CompareModelsView,
 )
-from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
 router.register(r'experiments', ExperimentViewSet, basename='experiment')
 
 urlpatterns = [
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/me/', CurrentUserView.as_view(), name='current_user'),

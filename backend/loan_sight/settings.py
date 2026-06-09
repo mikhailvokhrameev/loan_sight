@@ -24,7 +24,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ['SECRET_KEY']
 
-DEBUG = False
+DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
 
 # List of domains from which the server can be accessed
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
@@ -134,12 +134,18 @@ AUTH_USER_MODEL = 'api.User'
 # Django REST Framework Configuration
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'api.authentication.CookieJWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ],
 }
+
+# JWT Cookie settings
+JWT_AUTH_COOKIE = 'access_token'
+JWT_AUTH_REFRESH_COOKIE = 'refresh_token'
+JWT_AUTH_COOKIE_SECURE = not DEBUG  # False in dev (HTTP), True in prod (HTTPS)
+JWT_AUTH_COOKIE_SAMESITE = 'Lax'
 
 # JWT Configuration
 SIMPLE_JWT = {
