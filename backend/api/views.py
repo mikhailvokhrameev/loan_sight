@@ -3,6 +3,10 @@ import os
 import json
 import shutil
 import tempfile
+import time
+import joblib
+from concurrent.futures import ThreadPoolExecutor
+from sklearn.pipeline import Pipeline
 from django.conf import settings
 from rest_framework import viewsets, generics, status
 from rest_framework.exceptions import ValidationError
@@ -14,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from django.contrib.auth import get_user_model
-from .models import Experiment, ClientFeature, MLModel, RAW_FEATURES
+from .models import Experiment, ClientFeature, MLModel, RAW_FEATURES, _sanitize
 from .serializers import ExperimentSerializer, UserSerializer, RegisterSerializer
 from .utils import (
     predict_credit_risk, get_shap_values,
@@ -54,6 +58,26 @@ def _set_auth_cookies(response, access_token, refresh_token=None):
             samesite=samesite,
             path='/',
         )
+
+
+def _merge_overrides(overrides, cat_overrides):
+    converted = {}
+    for feature, str_value in cat_overrides.items():
+        mapping = LABEL_MAPPINGS.get(feature)
+        if mapping and str_value in mapping:
+            converted[feature] = float(mapping[str_value])
+    return {**overrides, **converted}
+
+
+def _delete_model_file(model):
+    if model.joblib_path and os.path.isfile(model.joblib_path):
+        try:
+            os.remove(model.joblib_path)
+            dir_path = os.path.dirname(model.joblib_path)
+            if os.path.isdir(dir_path) and not os.listdir(dir_path):
+                os.rmdir(dir_path)
+        except Exception:
+            pass
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -150,13 +174,7 @@ class ExperimentViewSet(viewsets.ModelViewSet):
         overrides = serializer.validated_data.get('overrides') or {}
         categorical_overrides = serializer.validated_data.get('categorical_overrides') or {}
 
-        converted = {}
-        for feature, str_value in categorical_overrides.items():
-            mapping = LABEL_MAPPINGS.get(feature)
-            if mapping and str_value in mapping:
-                converted[feature] = float(mapping[str_value])
-
-        combined_overrides = {**overrides, **converted}
+        combined_overrides = _merge_overrides(overrides, categorical_overrides)
 
         model_id = serializer.validated_data.get('model_id') or None
         if model_id is None:
@@ -229,57 +247,6 @@ class ExperimentClearView(APIView):
     def delete(self, request):
         deleted_count, _ = Experiment.objects.filter(user=request.user).delete()
         return Response({'deleted': deleted_count}, status=status.HTTP_200_OK)
-
-
-class ExplainView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        sk_id_curr = request.data.get('sk_id_curr')
-        amt_income = request.data.get('amt_income')
-        amt_credit = request.data.get('amt_credit')
-        currency = request.data.get('currency', 'RUB')
-        overrides = request.data.get('overrides') or {}
-        categorical_overrides = request.data.get('categorical_overrides') or {}
-
-        converted = {}
-        for feature, str_value in categorical_overrides.items():
-            mapping = LABEL_MAPPINGS.get(feature)
-            if mapping and str_value in mapping:
-                converted[feature] = float(mapping[str_value])
-
-        combined_overrides = {**overrides, **converted}
-
-        if not all([sk_id_curr, amt_income, amt_credit]):
-            return Response(
-                {"detail": "sk_id_curr, amt_income, and amt_credit are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            shap_data = get_shap_values(
-                sk_id_curr=int(sk_id_curr),
-                amt_income=amt_income,
-                amt_credit=amt_credit,
-                currency=currency,
-                overrides=combined_overrides,
-                model_id=get_default_model_id(),
-            )
-        except ValueError as exc:
-            logger.warning("ExplainView ValueError sk_id=%s: %s", sk_id_curr, exc)
-            return Response({"detail": "Client not found."}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as exc:
-            logger.error("ExplainView error for sk_id_curr=%s: %s", sk_id_curr, exc)
-            return Response(
-                {"detail": "Could not compute SHAP values. Please try again later."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-        return Response({"shap_values": shap_data})
-
-
-def _sanitize(feature_name):
-    return feature_name.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
 
 
 def _client_features_dict(client):
@@ -448,15 +415,9 @@ class CompareModelsView(APIView):
         if model_id_a == model_id_b:
             return Response({'detail': 'Please select two different models.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        converted = {}
-        for feature, str_value in cat_overrides.items():
-            mapping = LABEL_MAPPINGS.get(feature)
-            if mapping and str_value in mapping:
-                converted[feature] = float(mapping[str_value])
-        combined_overrides = {**overrides, **converted}
+        combined_overrides = _merge_overrides(overrides, cat_overrides)
 
         def score_one(model_id):
-            import time
             try:
                 ml_obj = MLModel.objects.get(pk=model_id, is_active=True)
             except MLModel.DoesNotExist:
@@ -501,7 +462,6 @@ class CompareModelsView(APIView):
                 'shap_values': shap_data,
             }
 
-        from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=2) as executor:
             fut_a = executor.submit(score_one, int(model_id_a))
             fut_b = executor.submit(score_one, int(model_id_b))
@@ -576,7 +536,6 @@ def _model_to_dict(m):
 
 
 def _detect_model_type(estimator):
-    from sklearn.pipeline import Pipeline
     obj = estimator.steps[-1][1] if isinstance(estimator, Pipeline) else estimator
     module = type(obj).__module__
     name = type(obj).__name__.lower()
@@ -625,9 +584,8 @@ class MLModelListView(APIView):
             for chunk in joblib_file.chunks():
                 tmp.write(chunk)
 
-        import joblib as jl
         try:
-            estimator = jl.load(tmp_path)
+            estimator = joblib.load(tmp_path)
         except Exception:
             os.unlink(tmp_path)
             return Response(
@@ -675,15 +633,7 @@ class MLModelDetailView(APIView):
         except MLModel.DoesNotExist:
             return Response({'detail': 'Model not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if model.joblib_path and os.path.isfile(model.joblib_path):
-            try:
-                os.remove(model.joblib_path)
-                dir_path = os.path.dirname(model.joblib_path)
-                if os.path.isdir(dir_path) and not os.listdir(dir_path):
-                    os.rmdir(dir_path)
-            except Exception:
-                pass
-
+        _delete_model_file(model)
         model.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -693,13 +643,6 @@ class MLModelClearView(APIView):
 
     def delete(self, request):
         for model in MLModel.objects.all():
-            if model.joblib_path and os.path.isfile(model.joblib_path):
-                try:
-                    os.remove(model.joblib_path)
-                    dir_path = os.path.dirname(model.joblib_path)
-                    if os.path.isdir(dir_path) and not os.listdir(dir_path):
-                        os.rmdir(dir_path)
-                except Exception:
-                    pass
+            _delete_model_file(model)
         deleted_count, _ = MLModel.objects.all().delete()
         return Response({'deleted': deleted_count}, status=status.HTTP_200_OK)
