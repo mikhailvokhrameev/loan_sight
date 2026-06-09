@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CustomTokenObtainPairView, CookieTokenRefreshView, RegisterView, CurrentUserView, LogoutView,
     ExperimentViewSet, ExperimentClearView,
-    ExplainView, ClientPresetsView, ClientSearchView, ClientFeaturesView,
+    ClientPresetsView, ClientSearchView, ClientFeaturesView,
     MLModelListView, MLModelDetailView, MLModelClearView, CompareModelsView,
 )
 
@@ -16,7 +16,6 @@ urlpatterns = [
     path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/me/', CurrentUserView.as_view(), name='current_user'),
-    path('explain/', ExplainView.as_view(), name='explain'),
     path('clients/presets/', ClientPresetsView.as_view(), name='client_presets'),
     path('clients/search/', ClientSearchView.as_view(), name='client_search'),
     path('clients/features/<int:sk_id_curr>/', ClientFeaturesView.as_view(), name='client_features'),
