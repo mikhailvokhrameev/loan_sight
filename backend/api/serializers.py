@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import Experiment, MLModel
 
 User = get_user_model() # Get current user model
@@ -21,6 +23,10 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
     def validate(self, data):
         if data['password'] != data['password2']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
+        try:
+            validate_password(data['password'])
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({"password": list(e.messages)})
         return data
 
     def create(self, validated_data): # Create user
