@@ -36,6 +36,9 @@ export default function Navbar({ theme, toggleTheme }) {
             <Link to="/dashboard" className="text-sm text-muted font-medium transition-colors duration-200 hover:text-main">
               Dashboard
             </Link>
+            <Link to="/models" className="text-sm text-muted font-medium transition-colors duration-200 hover:text-main">
+              Models
+            </Link>
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
