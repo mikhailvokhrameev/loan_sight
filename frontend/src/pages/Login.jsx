@@ -24,10 +24,9 @@ export default function Login() {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await authAPI.login(email, password);
-      localStorage.setItem('access_token', res.data.access);
+      await authAPI.login(email, password);
       const userRes = await authAPI.getCurrentUser();
-      login(userRes.data, res.data.access, res.data.refresh);
+      login(userRes.data);
       navigate('/dashboard');
     } catch (err) {
       setError('Login failed. Please check your credentials.');

@@ -3,71 +3,31 @@ import axios from 'axios';
 // Determine the API base URL using Vite environment variables, falling back to local Django development server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-// Create a pre-configured Axios instance to eliminate repeating the base URL and default headers across requests
+// Tokens are stored in httpOnly cookies - the browser sends them automatically.
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-/**
- * Request Interceptor:
- * Automatically intercepts every outgoing HTTP request before it hits the server.
- * It checks localStorage for an access token and injects it into the HTTP Authorization header.
- */
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-/**
- * Response Interceptor:
- * Intercepts all incoming responses from the server. It refreshes expired short-lived access tokens.
- */
+// Response interceptor: on 401, try to refresh tokens via cookie, then retry.
+// Uses axios to avoid triggering this interceptor recursively.
 api.interceptors.response.use(
-  (response) => response, // If the response is successful (status 2xx), simply forward it.
+  (response) => response,
   async (error) => {
     const originalRequest = error.config;
-
-    // Check if the server rejected the request due to token expiration (401 Unauthorized)
-    // The '_retry' flag for preventing an infinite looping if the refresh process itself fails.
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
-      
       try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (refreshToken) {
-          // Request a new access token using the long-lived refresh token
-          const response = await axios.post(`${API_BASE_URL}/auth/refresh/`, {
-            refresh: refreshToken,
-          });
-          
-          // Save the newly acquired access token back to localStorage
-          localStorage.setItem('access_token', response.data.access);
-          
-          // Update the authorization defaults for any upcoming API requests
-          api.defaults.headers.common['Authorization'] = `Bearer ${response.data.access}`;
-          
-          // Re-assign the new token to the original stalled request's header
-          originalRequest.headers.Authorization = `Bearer ${response.data.access}`;
-          
-          // Resend the original request to the server and return its promise chain transparently
-          return api(originalRequest);
-        }
-      } catch (err) {
-        // If the refresh token has also expired or is invalid, destroy the local session 
-        // and force the client to redirect to the login view.
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        await axios.post(`${API_BASE_URL}/auth/refresh/`, {}, { withCredentials: true });
+        return api(originalRequest);
+      } catch {
+        localStorage.removeItem('user');
         window.location.href = '/login';
       }
     }
-    
-    // Pass along any other API errors (e.g., 400 Bad Request, 500 Internal Error) to the component layer.
     return Promise.reject(error);
   }
 );
@@ -101,9 +61,9 @@ export const authAPI = {
   updateProfile: (data) =>
     api.patch('/auth/me/', data),
 
-  // Invalidates the refresh token on the backend (blacklist)
-  logout: (refreshToken) =>
-    api.post('/auth/logout/', { refresh: refreshToken }),
+  // Blacklists the refresh token cookie on the backend
+  logout: () =>
+    api.post('/auth/logout/', {}),
 };
 
 export const experimentsAPI = {
