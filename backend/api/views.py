@@ -266,7 +266,8 @@ class ExplainView(APIView):
                 model_id=get_default_model_id(),
             )
         except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_404_NOT_FOUND)
+            logger.warning("ExplainView ValueError sk_id=%s: %s", sk_id_curr, exc)
+            return Response({"detail": "Client not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as exc:
             logger.error("ExplainView error for sk_id_curr=%s: %s", sk_id_curr, exc)
             return Response(
@@ -362,7 +363,8 @@ class ClientSearchView(APIView):
             if had_late_payments and had_late_payments.lower() == 'true':
                 qs = qs.filter(def_30_cnt_social_circle__gt=0)
         except (ValueError, TypeError) as exc:
-            return Response({'detail': f'Invalid filter value: {exc}'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.warning("ClientListView invalid filter: %s", exc)
+            return Response({'detail': 'Invalid filter value.'}, status=status.HTTP_400_BAD_REQUEST)
 
         clients = qs.order_by('?')[:10]
 
@@ -471,7 +473,8 @@ class CompareModelsView(APIView):
                     model_id=model_id,
                 )
             except Exception as e:
-                return {'error': str(e)}
+                logger.error("Scoring failed model=%s: %s", model_id, e)
+                return {'error': 'Scoring failed. Please try again.'}
 
             shap_data = None
             try:

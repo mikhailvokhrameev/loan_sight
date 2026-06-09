@@ -24,12 +24,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: production
     container_name: loansight_backend
     command: >
       sh -c "python manage.py migrate &&
              python manage.py loaddata api/fixtures/mlmodels.json &&
-             gunicorn loan_sight.wsgi:application --bind 0.0.0.0:8000 --workers 4 --timeout 120"
+             python manage.py runserver 0.0.0.0:8000"
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     env_file:
@@ -50,13 +49,12 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: development
     container_name: loansight_frontend
     command: npm run dev -- --host
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000/api
+      - VITE_API_URL=/api
     volumes:
       - ./frontend:/frontend
       - /frontend/node_modules

@@ -81,7 +81,7 @@ def get_currency_rate(target_currency, base_currency='RUB'):
             else:
                 rate = 1.0
         except requests.RequestException as e:
-            print(f"Warning: Currency API failed. Using 1:1 rate. Error: {e}")
+            logger.warning("Currency API failed, fallback to 1:1. Error: %s", e)
             rate = 1.0
 
     return rate
