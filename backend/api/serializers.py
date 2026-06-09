@@ -1,6 +1,6 @@
-from rest_framework import serializers # DRF tools for creating serializers
+from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Application, MLModel # Connecting the application model
+from .models import Experiment, MLModel
 
 User = get_user_model() # Get current user model
 
@@ -34,7 +34,7 @@ class RegisterSerializer(serializers.ModelSerializer): # Serializer for user cre
         )
         return user
 
-class ApplicationSerializer(serializers.ModelSerializer): # Loan application serializer
+class ExperimentSerializer(serializers.ModelSerializer):
     amt_income = serializers.DecimalField(
         max_digits=15, decimal_places=2, required=False, allow_null=True, default=None
     )
@@ -57,18 +57,24 @@ class ApplicationSerializer(serializers.ModelSerializer): # Loan application ser
         required=False, allow_null=True, write_only=True,
     )
     ml_model_name = serializers.SerializerMethodField(read_only=True)
+    experiment_type = serializers.CharField(read_only=True)
+    results = serializers.JSONField(read_only=True)
 
     def get_ml_model_name(self, obj):
         return obj.ml_model.name if obj.ml_model else None
 
     class Meta:
-        model = Application
+        model = Experiment
         fields = [
             'id', 'sk_id_curr', 'amt_income', 'amt_credit', 'currency',
             'probability', 'risk_label', 'shap_values', 'created_at',
             'overrides', 'categorical_overrides', 'model_id', 'ml_model_name',
+            'experiment_type', 'results',
         ]
-        read_only_fields = ['id', 'probability', 'risk_label', 'shap_values', 'created_at', 'ml_model_name']
+        read_only_fields = [
+            'id', 'probability', 'risk_label', 'shap_values', 'created_at',
+            'ml_model_name', 'experiment_type', 'results',
+        ]
 
     def create(self, validated_data):
         validated_data.pop('overrides', None)

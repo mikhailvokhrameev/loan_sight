@@ -6,8 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-from .models import Application, ClientFeature, MLModel, RAW_FEATURES
-from .serializers import ApplicationSerializer, UserSerializer, RegisterSerializer
+from .models import Experiment, ClientFeature, MLModel, RAW_FEATURES
+from .serializers import ExperimentSerializer, UserSerializer, RegisterSerializer
 from .utils import (
     predict_credit_risk, get_shap_values,
     LABEL_MAPPINGS, LABEL_MAPPINGS_INVERSE,
@@ -46,23 +46,14 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
         # Overriding to dynamically return the current user making the request
         return self.request.user
 
-class ApplicationViewSet(viewsets.ModelViewSet):
-    """
-    A robust ViewSet that automatically provides CRUDS actions (List, Create, Retrieve, Update, Delete)
-    for credit applications. Completely restricted to authenticated users.
-    """
-    serializer_class = ApplicationSerializer
+class ExperimentViewSet(viewsets.ModelViewSet):
+    serializer_class = ExperimentSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Users can only see their own application records, ordered by newest first
-        return Application.objects.filter(user=self.request.user).order_by('-created_at')
+        return Experiment.objects.filter(user=self.request.user).order_by('-created_at')
 
     def perform_create(self, serializer):
-        """
-        Intercepts the creation logic to automatically trigger the ML credit risk model
-        before saving the instance to the database. Validates ML response to ensure user exists.
-        """
         user = self.request.user
         sk_id_curr = serializer.validated_data.get('sk_id_curr')
         amt_income = serializer.validated_data.get('amt_income')
@@ -87,7 +78,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except MLModel.DoesNotExist:
             raise ValidationError({"detail": "Selected model not found or inactive."})
 
-        # Invoke the external ML scoring function using user metadata and request data
         probability, risk_label = predict_credit_risk(
             sk_id_curr=sk_id_curr,
             amt_income=amt_income,
@@ -97,7 +87,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             model_id=model_id,
         )
 
-        # Stop the execution if the ML engine reports that the client is missing
         if risk_label == 'Client not found in database':
             raise ValidationError(
                 {"detail": "Your profile information could not be verified in our credit evaluation database."},
@@ -117,8 +106,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.warning("SHAP computation failed for sk_id_curr=%s: %s", sk_id_curr, exc)
 
-        # Resolve amt_income / amt_credit for Application model storage.
-        # If not provided by the form, fall back to the client's DB values (in RUB).
         save_income = amt_income
         save_credit = amt_credit
         if save_income is None or save_credit is None:
@@ -133,12 +120,27 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             amt_income=save_income,
             amt_credit=save_credit,
             currency=currency,
-            probability=probability,
-            risk_label=risk_label,
+            probability=[probability],
+            risk_label=[risk_label],
             sk_id_curr=sk_id_curr,
-            shap_values=shap_data,
+            shap_values=[shap_data] if shap_data is not None else None,
             ml_model=ml_model_obj,
+            experiment_type='single',
+            results=[{
+                'id': ml_model_obj.id,
+                'name': ml_model_obj.name,
+                'model_type': ml_model_obj.model_type,
+                'latency_ms': None,
+            }],
         )
+
+
+class ExperimentClearView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        deleted_count, _ = Experiment.objects.filter(user=request.user).delete()
+        return Response({'deleted': deleted_count}, status=status.HTTP_200_OK)
 
 
 class ExplainView(APIView):
@@ -422,6 +424,48 @@ class CompareModelsView(APIView):
             return Response({'detail': result_b['error']}, status=status.HTTP_400_BAD_REQUEST)
 
         score_diff = round(abs(result_a['probability'] - result_b['probability']) * 100, 2)
+
+        compare_results = [
+            {
+                'model_id': result_a['model_id'],
+                'model_name': result_a['model_name'],
+                'model_type': result_a['model_type'],
+                'probability': result_a['probability'],
+                'risk_label': result_a['risk_label'],
+                'latency_ms': result_a['latency_ms'],
+                'shap_values': result_a['shap_values'],
+            },
+            {
+                'model_id': result_b['model_id'],
+                'model_name': result_b['model_name'],
+                'model_type': result_b['model_type'],
+                'probability': result_b['probability'],
+                'risk_label': result_b['risk_label'],
+                'latency_ms': result_b['latency_ms'],
+                'shap_values': result_b['shap_values'],
+            },
+        ]
+
+        client_data = get_client_features_dict(int(sk_id_curr)) or {}
+        save_income = float(client_data.get('AMT_INCOME_TOTAL') or 0)
+        save_credit = float(client_data.get('AMT_CREDIT') or 0)
+
+        Experiment.objects.create(
+            user=request.user,
+            sk_id_curr=int(sk_id_curr),
+            experiment_type='compare',
+            amt_income=save_income,
+            amt_credit=save_credit,
+            currency=currency,
+            probability=[result_a['probability'], result_b['probability']],
+            risk_label=[result_a['risk_label'], result_b['risk_label']],
+            shap_values=[result_a['shap_values'], result_b['shap_values']],
+            ml_model=None,
+            results=[
+                {'id': result_a['model_id'], 'name': result_a['model_name'], 'model_type': result_a['model_type'], 'latency_ms': result_a['latency_ms']},
+                {'id': result_b['model_id'], 'name': result_b['model_name'], 'model_type': result_b['model_type'], 'latency_ms': result_b['latency_ms']},
+            ],
+        )
 
         return Response({
             'model_a': result_a,
