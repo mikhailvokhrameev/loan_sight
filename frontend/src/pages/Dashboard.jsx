@@ -3,6 +3,7 @@ import { experimentsAPI, clientsAPI, modelsAPI } from '../api';
 import { PlusCircleIcon, HistoryIcon, TrashIcon, UserIcon } from '../components/Icons';
 import ShapWaterfallChart from '../components/ShapWaterfallChart';
 import ModelTypeBadge from '../components/ModelTypeBadge';
+import ConfirmModal from '../components/ConfirmModal';
 import ClientSelector from './ClientSelector';
 import FeatureOverridePanel from '../components/FeatureOverridePanel';
 
@@ -368,7 +369,7 @@ export default function Dashboard() {
             <form onSubmit={handleSubmitAssessment}>
               <div className="mb-5">
                 <label className="block text-sm font-medium mb-2 text-main">Client ID</label>
-                <input type="number" name="sk_id_curr" className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100042" disabled={loading} />
+                <input type="number" name="sk_id_curr" className="form-input" value={formData.sk_id_curr} onChange={handleFormChange} required placeholder="e.g. 100042" disabled={loading} />
               </div>
 
               {formData.sk_id_curr && (
@@ -416,7 +417,7 @@ export default function Dashboard() {
                           <div className="mb-5">
                             <label className="block text-sm font-medium mb-2 text-main">Currency</label>
                             <select
-                              className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                              className="form-select"
                               value={currency}
                               onChange={e => handleCurrencyChange(e.target.value)}
                               disabled={featuresLoading || loading}
@@ -448,7 +449,7 @@ export default function Dashboard() {
                     Scoring Model
                   </label>
                   <select
-                    className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                    className="form-select"
                     value={selectedModelId ?? ''}
                     onChange={e => setSelectedModelId(Number(e.target.value))}
                     disabled={loading}
@@ -485,7 +486,7 @@ export default function Dashboard() {
                     <div className="mt-3">
                       <label className="block text-sm font-medium mb-2 text-main">Model B</label>
                       <select
-                        className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none"
+                        className="form-select"
                         value={selectedModelIdB ?? ''}
                         onChange={e => setSelectedModelIdB(Number(e.target.value))}
                         disabled={loading}
@@ -605,18 +606,12 @@ export default function Dashboard() {
         <ExperimentResultModal exp={selectedExperiment} onClose={() => setSelectedExperiment(null)} />
       )}
 
-      {/* Delete Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-md p-6 shadow-xl w-full max-w-[340px] text-center">
-            <h2 className="text-lg font-semibold text-main mb-2">Are you sure?</h2>
-            <p className="text-sm text-muted mb-6">This assessment history will be permanently removed.</p>
-            <div className="flex gap-3">
-              <button className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-hover-bg rounded-sm transition-all" onClick={() => setShowDeleteModal(false)}>Cancel</button>
-              <button className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all" onClick={confirmDeleteExperiment}>Delete</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          message="This assessment history will be permanently removed."
+          onConfirm={confirmDeleteExperiment}
+          onCancel={() => setShowDeleteModal(false)}
+        />
       )}
     </div>
   );

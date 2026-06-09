@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { modelsAPI } from '../api';
 import { TrashIcon } from '../components/Icons';
 import ModelTypeBadge from '../components/ModelTypeBadge';
+import ConfirmModal from '../components/ConfirmModal';
 
 const METRIC_LABELS = {
   roc_auc:   'ROC AUC',
@@ -82,8 +83,6 @@ const ModelCard = ({ model, onDelete }) => {
     </div>
   );
 };
-
-const inputCls = 'w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none';
 
 export default function Models() {
   const [models, setModels] = useState([]);
@@ -221,7 +220,7 @@ export default function Models() {
                 <label className="block text-sm font-medium mb-2 text-main">Name</label>
                 <input
                   type="text"
-                  className={inputCls}
+                  className="form-input"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   required
@@ -232,7 +231,7 @@ export default function Models() {
               <div className="mb-5">
                 <label className="block text-sm font-medium mb-2 text-main">Description <span className="text-muted font-normal">(optional)</span></label>
                 <textarea
-                  className={`${inputCls} resize-none`}
+                  className="form-input resize-none"
                   rows={3}
                   maxLength={300}
                   value={form.description}
@@ -309,52 +308,20 @@ export default function Models() {
         </div>
       )}
 
-      {/* Delete single model modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-md p-6 shadow-xl w-full max-w-[340px] text-center">
-            <h2 className="text-lg font-semibold text-main mb-2">Are you sure?</h2>
-            <p className="text-sm text-muted mb-6">This model will be permanently removed.</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-hover-bg rounded-sm transition-all"
-                onClick={() => { setShowDeleteModal(false); setDeleteTargetId(null); }}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all"
-                onClick={confirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          message="This model will be permanently removed."
+          onConfirm={confirmDelete}
+          onCancel={() => { setShowDeleteModal(false); setDeleteTargetId(null); }}
+        />
       )}
 
-      {/* Delete all models modal */}
       {showClearModal && (
-        <div className="fixed inset-0 bg-black/50 z-[10000] flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-md p-6 shadow-xl w-full max-w-[340px] text-center">
-            <h2 className="text-lg font-semibold text-main mb-2">Are you sure?</h2>
-            <p className="text-sm text-muted mb-6">All models will be permanently removed.</p>
-            <div className="flex gap-3">
-              <button
-                className="flex-1 py-2 text-sm font-medium border border-border text-main hover:bg-hover-bg rounded-sm transition-all"
-                onClick={() => setShowClearModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 text-sm font-medium bg-error text-white hover:opacity-90 rounded-sm transition-all"
-                onClick={confirmClearAll}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          message="All models will be permanently removed."
+          onConfirm={confirmClearAll}
+          onCancel={() => setShowClearModal(false)}
+        />
       )}
     </div>
   );
