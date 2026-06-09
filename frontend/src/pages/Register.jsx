@@ -17,7 +17,19 @@ export default function Register() {
       await authAPI.register(formData.email, formData.password, formData.firstName, formData.lastName);
       setSuccess('Account created!');
       setTimeout(() => navigate('/login'), 2000);
-    } catch (err) { setError('Registration failed.'); setLoading(false); }
+    } catch (err) {
+      const data = err.response?.data;
+      if (data?.password) {
+        const msgs = Array.isArray(data.password) ? data.password : [data.password];
+        setError(msgs.join(' '));
+      } else if (data?.email) {
+        const msgs = Array.isArray(data.email) ? data.email : [data.email];
+        setError(msgs.join(' '));
+      } else {
+        setError('Registration failed. Please try again.');
+      }
+      setLoading(false);
+    }
   };
 
   return (
