@@ -1,19 +1,28 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CustomTokenObtainPairView, RegisterView, CurrentUserView, ApplicationViewSet
-from rest_framework_simplejwt.views import TokenRefreshView
+from .views import (
+    CustomTokenObtainPairView, CookieTokenRefreshView, RegisterView, CurrentUserView, LogoutView,
+    ExperimentViewSet, ExperimentClearView,
+    ClientPresetsView, ClientSearchView, ClientFeaturesView,
+    MLModelListView, MLModelDetailView, MLModelClearView, CompareModelsView,
+)
 
-# Standard DRF Router initialization for automated handling of RESTful viewsets
 router = DefaultRouter()
-# Automatically registers routes like /applications/ (GET/POST) and /applications/<pk>/ (GET/PUT/DELETE)
-router.register(r'applications', ApplicationViewSet, basename='application')
+router.register(r'experiments', ExperimentViewSet, basename='experiment')
 
 urlpatterns = [
-    # Auth endpoints
     path('auth/login/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
+    path('auth/logout/', LogoutView.as_view(), name='logout'),
     path('auth/register/', RegisterView.as_view(), name='register'),
     path('auth/me/', CurrentUserView.as_view(), name='current_user'),
-    path('', include(router.urls)), # connects automatically generated routes from the DRF router to the application
-    
+    path('clients/presets/', ClientPresetsView.as_view(), name='client_presets'),
+    path('clients/search/', ClientSearchView.as_view(), name='client_search'),
+    path('clients/features/<int:sk_id_curr>/', ClientFeaturesView.as_view(), name='client_features'),
+    path('models/', MLModelListView.as_view(), name='ml_models'),
+    path('models/clear/', MLModelClearView.as_view(), name='ml_model_clear'),
+    path('models/<int:pk>/', MLModelDetailView.as_view(), name='ml_model_detail'),
+    path('compare/', CompareModelsView.as_view(), name='compare_models'),
+    path('experiments/clear/', ExperimentClearView.as_view(), name='experiment_clear'),
+    path('', include(router.urls)),
 ]

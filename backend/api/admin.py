@@ -1,9 +1,17 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth import get_user_model
+from .models import Experiment
 
-# Get the active user model
 User = get_user_model()
+
+
+@admin.register(Experiment)
+class ExperimentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'experiment_type', 'sk_id_curr', 'risk_label', 'created_at')
+    list_filter = ('experiment_type', 'risk_label')
+    search_fields = ('user__email', 'sk_id_curr')
+    ordering = ('-created_at',)
 
 
 @admin.register(User)

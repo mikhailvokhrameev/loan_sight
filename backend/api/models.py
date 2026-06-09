@@ -12,20 +12,51 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
-class Application(models.Model): # Creates a table of loan applications
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='applications') # Each application belongs to one user
+class MLModel(models.Model):
+    name          = models.CharField(max_length=100, unique=True)
+    model_type    = models.CharField(max_length=50)  # "lgbm", "xgb", "catboost", "logreg"
+    joblib_path   = models.CharField(max_length=500)
+    feature_names = models.JSONField()
+    metrics       = models.JSONField()
+    thresholds    = models.JSONField()
+    description   = models.TextField(blank=True, default='')
+    is_active     = models.BooleanField(default=True)
+    created_at    = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Experiment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='experiments')
     amt_income = models.DecimalField(max_digits=15, decimal_places=2)
     amt_credit = models.DecimalField(max_digits=15, decimal_places=2)
     currency = models.CharField(max_length=10, default='RUB')
-    probability = models.FloatField(null=True, blank=True)
-    risk_label = models.CharField(max_length=20, null=True, blank=True)
+    probability = models.JSONField(null=True, blank=True)   # [prob] or [prob_a, prob_b]
+    risk_label = models.JSONField(null=True, blank=True)    # ["Low"] or ["High", "Medium"]
+    shap_values = models.JSONField(null=True, blank=True)   # [{shap}] or [{shap_a}, {shap_b}]
     created_at = models.DateTimeField(auto_now_add=True)
     sk_id_curr = models.IntegerField(null=True, blank=True)
-    
-    def __str__(self):
-        return f"App #{self.id} - User {self.user.email} ({self.risk_label})"
+    ml_model = models.ForeignKey(
+        'MLModel',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='experiments',
+    )
+    experiment_type = models.CharField(
+        max_length=10,
+        choices=[('single', 'Single'), ('compare', 'Compare')],
+        default='single',
+    )
+    results = models.JSONField(null=True, blank=True)
 
-from django.db import models
+    class Meta:
+        db_table = 'api_experiment'
+        verbose_name = 'Experiment'
+        verbose_name_plural = 'Experiments'
+
+    def __str__(self):
+        return f"Experiment #{self.id} - {self.user.email} ({self.experiment_type})"
 
 class ClientFeature(models.Model):
     # Unique client ID from the dataset (Primary Key)
@@ -121,8 +152,10 @@ RAW_FEATURES = [
     'CC_SK_DPD_MEAN', 'CC_SK_DPD_DEF_MEAN', 'CC_SK_DPD_DEF_SUM', 'CC_SK_DPD_DEF_VAR'
 ]
 
+def _sanitize(feature_name):
+    return feature_name.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
+
+
 # Dynamically create fields in Django during class loading
 for feature in RAW_FEATURES:
-    # Clear the name of special characters and FORCEDLY collapse '__' into '_'
-    sanitized_field = feature.lower().replace(' ', '_').replace(':', '_').replace('-', '_').replace('__', '_')
-    ClientFeature.add_to_class(sanitized_field, models.FloatField(null=True, blank=True))
+    ClientFeature.add_to_class(_sanitize(feature), models.FloatField(null=True, blank=True))

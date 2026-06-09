@@ -1,66 +1,93 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const features = [
+  {
+    title: "Instant Risk Scoring",
+    desc: "Get a default probability score in milliseconds — powered by Classic ML models trained on 300,000+ real loan applications.",
+  },
+  {
+    title: "SHAP Explainability",
+    desc: "Every score comes with a waterfall chart showing exactly which features drove the result up or down.",
+  },
+  {
+    title: "Manual Feature Overrides",
+    desc: "Adjust income, credit amount, and other features to run what-if scenarios before making a decision.",
+  },
+  {
+    title: "Multi-Currency Support",
+    desc: "View and override monetary features in RUB, USD, EUR, GBP, KZT, or BYN with automatic conversion.",
+  },
+  {
+    title: "Model Comparison",
+    desc: "Run two models side-by-side on the same client and measure how much their scores diverge.",
+  },
+  {
+    title: "Experiment History",
+    desc: "Every assessment is saved. Browse past results, compare outcomes, or delete records you no longer need.",
+  },
+];
+
+const steps = [
+  { step: "01", title: "Pick a Client", desc: "Select a borrower profile from the presets or use the Smart Search." },
+  { step: "02", title: "Configure the Assessment", desc: "Choose Auto mode to use stored data as-is, or switch to Manual to override specific features and currency." },
+  { step: "03", title: "Select a Model", desc: "Score with a single ML model variant or enable Compare mode to pit two models against each other." },
+  { step: "04", title: "Review the Result", desc: "Get a risk label, default probability, and a SHAP waterfall chart — all in one view." },
+];
+
 export default function Home() {
-  // Extracting the authentication status from global auth context to handle route security
   const { isAuthenticated } = useAuth();
 
-  // If a user is already authenticated smoothly redirect them straight to the main dashboard
-  if (isAuthenticated) {
-    // The 'replace' attribute overrides the current entry in the history stack,
-    // ensuring that clicking the browser's "Back" button won't lock the user in a redirect loop.
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
   return (
-    // Public Landing Layout Container
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
-      
-      {/* Hero Section Headers */}
-      <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '1rem', letterSpacing: '-0.02em' }}>
-        Experiment with Credit Risk ML Model
-      </h1>
-      <p className="text-muted" style={{ fontSize: '1.125rem', maxWidth: '500px', marginBottom: '2rem' }}>
-        LoanSight uses advanced machine learning to provide credit scoring on Kaggle Home Credit Default Risk dataset.
-      </p>
-      
-      {/* Primary Call-to-Action Navigation Controls */}
-      <div className="flex gap-4 justify-center">
-        <Link to="/register" className="btn btn-primary btn-large">
-          Get Started
-        </Link>
-        <Link to="/login" className="btn btn-secondary btn-large">
-          Log In
-        </Link>
-      </div>
-      
-      {/* Feature Showcase Grid - Details the internal processing flow for end users */}
-      <div className="grid mt-4 pt-4" style={{ marginTop: '4rem', textAlign: 'left', width: '100%' }}>
-        
-        {/* Input Collection Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>1. Choose a Home Credit cient profile</h3>
-          <p className="text-sm text-muted">Select a client based on his SK_ID_CURR</p>
-        </div>
+    <div className="flex flex-col items-center py-16 px-4">
 
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>2. Simple Input</h3>
-          <p className="text-sm text-muted">Enter basic applicant data including income and desired loan amount</p>
+      {/* Hero */}
+      <div className="text-center max-w-2xl mb-16">
+        <h1 className="text-4xl md:text-5xl font-bold mb-5 tracking-tight text-main leading-tight">
+          Credit Risk Scoring,<br />Explained.
+        </h1>
+        <p className="text-muted text-lg leading-relaxed mb-8">
+          LoanSight runs classic ML models trained on the Kaggle Home Credit dataset to produce instant, interpretable default-probability scores — with SHAP explanations for every prediction.
+        </p>
+        <div className="flex gap-4 justify-center">
+          <Link to="/register" className="px-8 py-3 text-base font-semibold rounded-sm bg-primary text-primary-foreground hover:bg-primary-hover shadow-md transition-all">
+            Get Started
+          </Link>
+          <Link to="/login" className="px-8 py-3 text-base font-semibold rounded-sm border border-border text-main bg-transparent hover:bg-hover-bg transition-all">
+            Log In
+          </Link>
         </div>
-        
-        {/* Machine Learning Evaluation Framework Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>3. ML Analysis</h3>
-          <p className="text-sm text-muted">ML model evaluates the profile against historical performance data.</p>
-        </div>
-        
-        {/* Automated Resolution Card */}
-        <div className="card">
-          <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.5rem' }}>4. Instant Decision</h3>
-          <p className="text-sm text-muted">Receive a probability score and automated risk classification instantly.</p>
-        </div>
-        
       </div>
+
+      {/* How it works */}
+      <div className="w-full max-w-4xl mb-20">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-muted text-center mb-8">How it works</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {steps.map(({ step, title, desc }) => (
+            <div key={step} className="bg-card border border-border rounded-md p-6 shadow-sm">
+              <p className="text-3xl font-black text-primary opacity-30 mb-3 leading-none">{step}</p>
+              <h3 className="text-sm font-bold text-main mb-2">{title}</h3>
+              <p className="text-xs text-muted leading-relaxed">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Features */}
+      <div className="w-full max-w-4xl">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-muted text-center mb-8">What you get</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {features.map(({ title, desc }) => (
+            <div key={title} className="bg-card border border-border rounded-md p-6 shadow-sm hover:shadow-md transition-shadow">
+              <h3 className="text-sm font-bold mb-2 text-main">{title}</h3>
+              <p className="text-sm text-muted leading-relaxed">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
     </div>
   );
 }

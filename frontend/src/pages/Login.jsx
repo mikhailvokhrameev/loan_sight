@@ -4,118 +4,56 @@ import { authAPI } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 export default function Login() {
-  // State Declarations
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Router and Context Hooks
   const navigate = useNavigate();
   const location = useLocation();
   const { login } = useAuth();
 
-  // Checks if the user was redirected here with a message in the navigation state 
   useEffect(() => {
     if (location.state?.message) {
       setSuccess(location.state.message);
-      
-      // Clear the history state to prevent the success alert from popping up again 
-      // if the user decides to manually refresh the page.
       window.history.replaceState({}, document.title);
     }
   }, [location]);
 
-  // Form Submission Handler
   const submit = async (e) => {
-    e.preventDefault(); // Prevent full page reload on submit
-    setError('');
-    setSuccess('');
-
-    // Basic client-side validation fallback
-    if (!email || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-
-    setLoading(true);
-
+    e.preventDefault();
+    setError(''); setLoading(true);
     try {
-      // Request JWT authentication tokens from the backend
-      const res = await authAPI.login(email, password);
-      
-      // Temporarily store the access token in localStorage.
-      // This allows the Axios interceptor to pick it up immediately for the next request.
-      localStorage.setItem('access_token', res.data.access);
-      
-      // Fetch full user profile details
+      await authAPI.login(email, password);
       const userRes = await authAPI.getCurrentUser();
-      
-      // Commit user data and tokens to the Auth Context to update the global app state
-      login(userRes.data, res.data.access, res.data.refresh);
-      
-      // Redirect the authenticated user to their main interactive workspace
+      login(userRes.data);
       navigate('/dashboard');
     } catch (err) {
-      // Extract specific error details from backend response or use a generic fallback message
-      const errorMsg = err.response?.data?.detail || err.response?.data?.error || 'Login failed. Please verify your credentials.';
-      setError(errorMsg);
-    } finally {
-      setLoading(false); // Enable the submit button and inputs regardless of the outcome
-    }
+      setError('Login failed. Please check your credentials.');
+    } finally { setLoading(false); }
   };
 
   return (
-    <div className="max-w-md mt-4">
-      <div className="card">
-        <h2 className="mb-4">Log in to LoanSight</h2>
-
-        {/* Dynamic Alerts for Status Feedback */}
-        {error && <div className="alert alert-error">{error}</div>}
-        {success && <div className="alert alert-success">{success}</div>}
-
+    <div className="max-w-md w-full mx-auto mt-16">
+      <div className="bg-card border border-border rounded-md p-8 shadow-sm">
+        <h2 className="text-2xl font-bold mb-8 text-main text-center">Log in</h2>
+        {error && <div className="p-4 rounded-sm text-sm mb-6 bg-error-bg text-error border border-red-200">{error}</div>}
+        {success && <div className="p-4 rounded-sm text-sm mb-6 bg-success-bg text-success border border-emerald-200">{success}</div>}
         <form onSubmit={submit}>
-          {/* Email Input Field */}
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input 
-              type="email" 
-              placeholder="you@example.com" 
-              value={email}
-              onChange={e => setEmail(e.target.value)} 
-              className="form-input" 
-              required 
-            />
+          <div className="mb-5">
+            <label className="block text-sm font-medium mb-2 text-main">Email address</label>
+            <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" required />
           </div>
-
-          {/* Password Input Field */}
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input 
-              type="password" 
-              placeholder="••••••••" 
-              value={password}
-              onChange={e => setPassword(e.target.value)} 
-              className="form-input" 
-              required 
-            />
+          <div className="mb-8">
+            <label className="block text-sm font-medium mb-2 text-main">Password</label>
+            <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-[0.625rem] border border-border rounded-sm text-sm bg-bg text-main focus:border-primary focus:outline-none" required />
           </div>
-
-          {/* Submit Action Button */}
-          {/* Disabled during API requests to prevent double-submissions */}
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="btn btn-primary w-full justify-center"
-          >
-            {loading ? 'Logging in...' : 'Log in'}
+          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-sm hover:bg-primary-hover transition-all disabled:opacity-60">
+            {loading ? 'Logging in...' : 'Sign In'}
           </button>
         </form>
-        
-        {/* Navigation Link to Registration */}
-        <p className="text-center text-sm text-muted mt-4">
-          Don't have an account? <Link to="/register" style={{color: 'var(--primary)', fontWeight: 500}}>Register now</Link>
+        <p className="text-center text-sm text-muted mt-8">
+          New here? <Link to="/register" className="text-primary font-bold hover:underline">Create an account</Link>
         </p>
       </div>
     </div>

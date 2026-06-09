@@ -1,4 +1,5 @@
 import { createContext, useState, useEffect, useContext } from 'react';
+import api from '../api';
 
 // Create a React Context for authentication. 
 // This acts as a global data store for user session data, accessible by any component in the tree.
@@ -24,37 +25,29 @@ export function AuthProvider({ children }) {
    * a previously active session, avoiding abrupt sign-outs when the browser page refreshes.
    */
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (token && storedUser) {
-      try {
-        // Hydrate the React runtime state using serialized JSON strings from storage.
-        setUser(JSON.parse(storedUser));
+    // Verify the httpOnly cookie is still valid by calling /auth/me/
+    api.get('/auth/me/')
+      .then(res => {
+        setUser(res.data);
+        localStorage.setItem('user', JSON.stringify(res.data));
         setIsAuthenticated(true);
-      } catch (err) {
-        // Fail-safe: Handle data corruption (e.g., malformed JSON in localStorage).
-        // Wipe all tokens and references to prevent unstable app behavior.
-        console.error('Failed to parse stored user data, wiping credentials:', err);
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+      })
+      .catch(() => {
         localStorage.removeItem('user');
-      }
-    }
-    // Conclude initialization. Protected routes can now confidently evaluate authentication states.
-    setLoading(false);
+        setUser(null);
+        setIsAuthenticated(false);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   /**
    * login action:
-   * Coordinates local session storage with active React state bindings upon successful credentials validation.
-   * @param {Object} userData - Serialized profile object returned from the backend.
-   * @param {string} accessToken - JWT short-lived authorization token.
-   * @param {string} refreshToken - JWT long-lived renewal token.
+   * Coordinates local session storage with active React state bindings upon successful credentials validation
+   * @param {Object} userData - Serialized profile object returned from the backend
+   * @param {string} accessToken - JWT short-lived authorization token
+   * @param {string} refreshToken - JWT long-lived renewal token
    */
-  const login = (userData, accessToken, refreshToken) => {
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('refresh_token', refreshToken);
+  const login = (userData) => {
     localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     setIsAuthenticated(true);
@@ -62,17 +55,20 @@ export function AuthProvider({ children }) {
 
   /**
    * logout action:
-   * Purges all cryptographic credentials and metadata elements, revoking client-side session rights.
+   * Purges all cryptographic credentials and metadata elements, revoking client-side session rights
    */
-  const logout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+  const logout = async () => {
+    try {
+      await api.post('/auth/logout/', {});
+    } catch {
+      // Token already expired or server unreachable - proceed with local cleanup
+    }
     localStorage.removeItem('user');
     setUser(null);
     setIsAuthenticated(false);
   };
 
-  // Expose state and mutations via Context.Provider, making them available to all child tree subscribers.
+  // Expose state and mutations via Context.Provider, making them available to all child tree subscribers
   return (
     <AuthContext.Provider value={{ user, isAuthenticated, loading, login, logout }}>
       {children}
@@ -88,7 +84,7 @@ export function AuthProvider({ children }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   
-  // Safety Boundary Check: Throws an explicit error if a developer attempts to call 
+  // Throws an explicit error if a developer attempts to call 
   // useAuth() inside a component that is not positioned as a descendant of <AuthProvider>.
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider instance');
